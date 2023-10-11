@@ -58,21 +58,41 @@ func (s *SignedConnection) Send(msg []byte) error {
 	return nil
 }
 
+func (s *SignedConnection) mustReadN(N int) ([]byte, error) {
+	buffer := make([]byte, 0, N)
+	for {
+		msg := make([]byte, N-len(buffer))
+		nBytes, err := s.conn.Read(msg)
+		if err != nil {
+			return nil, err
+		}
+		if nBytes > 0 {
+			buffer = append(buffer, msg[:nBytes]...)
+			if len(buffer) == N {
+				return buffer, nil
+			}
+		}
+	}
+}
+
 func (s *SignedConnection) readWithoutCheck() ([]byte, error) {
-	lengthBytes := make([]byte, 4)
+	lengthBytes, err := s.mustReadN(4)
+	if err != nil {
+		return nil, err
+	}
 	if n, err := s.conn.Read(lengthBytes); n != 4 {
 		return nil, err
 	}
 	length := int(lengthBytes[0]) + (int(lengthBytes[1]) << 8) + (int(lengthBytes[2]) << 16) + (int(lengthBytes[3]) << 24)
-	msg := make([]byte, length)
 	if length == 0 {
 		return nil, nil
 	}
-	if n, err := s.conn.Read(msg); n != int(length) {
-		if err != nil {
-			return nil, err
-		}
-		return nil, fmt.Errorf("message too short: expected %d bytes, got %d bytes", length, n)
+	msg, err := s.mustReadN(length)
+	if err != nil {
+		return nil, err
+	}
+	if len(msg) != length {
+		return nil, errors.New("unexpected error: message too short")
 	}
 	return msg, nil
 }
