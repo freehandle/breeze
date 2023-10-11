@@ -80,9 +80,6 @@ func (s *SignedConnection) readWithoutCheck() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if n, err := s.conn.Read(lengthBytes); n != 4 {
-		return nil, err
-	}
 	length := int(lengthBytes[0]) + (int(lengthBytes[1]) << 8) + (int(lengthBytes[2]) << 16) + (int(lengthBytes[3]) << 24)
 	if length == 0 {
 		return nil, nil
