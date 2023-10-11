@@ -22,6 +22,9 @@ func (c *CachedConnection) SendDirect(data []byte) error {
 	if (!c.Live) || c.ready {
 		return errors.New("connection is dead")
 	}
+	if len(data) == 0 {
+		return nil
+	}
 	if err := c.conn.Send(data); err != nil {
 		c.conn.Shutdown()
 		c.Live = false
@@ -68,7 +71,7 @@ func NewCachedConnection(conn *SignedConnection) *CachedConnection {
 				if N := len(msgCache); N > 0 {
 					data := msgCache[0]
 					msgCache = msgCache[1:]
-					if err := conn.Send(data); err != nil {
+					if err := cached.SendDirect(data); err != nil {
 						return
 					}
 					if N > 1 {
@@ -88,6 +91,5 @@ func NewCachedConnection(conn *SignedConnection) *CachedConnection {
 			}
 		}
 	}()
-
 	return cached
 }

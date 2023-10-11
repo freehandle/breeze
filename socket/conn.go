@@ -3,6 +3,7 @@ package socket
 
 import (
 	"errors"
+	"fmt"
 	"net"
 
 	"github.com/freehandle/breeze/crypto"
@@ -40,12 +41,15 @@ type SignedConnection struct {
 }
 
 func (s *SignedConnection) Send(msg []byte) error {
+	if len(msg) == 0 {
+		return nil
+	}
 	lengthWithSignature := len(msg) + crypto.SignatureSize
-	if lengthWithSignature > 1<<40-1 {
+	if lengthWithSignature > 1<<32-1 {
 		return ErrMessageTooLarge
 	}
 	msgToSend := []byte{byte(lengthWithSignature), byte(lengthWithSignature >> 8),
-		byte(lengthWithSignature >> 16), byte(lengthWithSignature >> 24), byte(lengthWithSignature >> 32)}
+		byte(lengthWithSignature >> 16), byte(lengthWithSignature >> 24)}
 	signature := s.key.Sign(msg)
 	msgToSend = append(append(msgToSend, msg...), signature[:]...)
 	if n, err := s.conn.Write(msgToSend); n != lengthWithSignature+4 {
@@ -55,14 +59,20 @@ func (s *SignedConnection) Send(msg []byte) error {
 }
 
 func (s *SignedConnection) readWithoutCheck() ([]byte, error) {
-	lengthBytes := make([]byte, 5)
-	if n, err := s.conn.Read(lengthBytes); n != 5 {
+	lengthBytes := make([]byte, 4)
+	if n, err := s.conn.Read(lengthBytes); n != 4 {
 		return nil, err
 	}
-	lenght := int(lengthBytes[0]) + (int(lengthBytes[1]) << 8) + (int(lengthBytes[2]) << 16) + (int(lengthBytes[3]) << 24) + (int(lengthBytes[4]) << 32)
-	msg := make([]byte, lenght)
-	if n, err := s.conn.Read(msg); n != int(lenght) {
-		return nil, err
+	length := int(lengthBytes[0]) + (int(lengthBytes[1]) << 8) + (int(lengthBytes[2]) << 16) + (int(lengthBytes[3]) << 24)
+	msg := make([]byte, length)
+	if length == 0 {
+		return nil, nil
+	}
+	if n, err := s.conn.Read(msg); n != int(length) {
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("message too short: expected %d bytes, got %d bytes", length, n)
 	}
 	return msg, nil
 }
@@ -73,7 +83,7 @@ func (s *SignedConnection) Read() ([]byte, error) {
 		return nil, err
 	}
 	if len(bytes) < crypto.SignatureSize {
-		return nil, errors.New("message too short")
+		return nil, fmt.Errorf("message too short:%v", len(bytes))
 	}
 	msg := bytes[0 : len(bytes)-crypto.SignatureSize]
 	var signature crypto.Signature
