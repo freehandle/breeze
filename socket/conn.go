@@ -4,6 +4,7 @@ package socket
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net"
 
 	"github.com/freehandle/breeze/crypto"
@@ -63,7 +64,7 @@ func (s *SignedConnection) mustReadN(N int) ([]byte, error) {
 	for {
 		msg := make([]byte, N-len(buffer))
 		nBytes, err := s.conn.Read(msg)
-		if err != nil {
+		if err != nil && err != io.EOF {
 			return nil, err
 		}
 		if nBytes > 0 {
