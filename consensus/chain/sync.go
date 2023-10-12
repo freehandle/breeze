@@ -44,11 +44,13 @@ func (c *Chain) SyncBlocksServer(conn *socket.CachedConnection, epoch uint64) {
 	for _, block := range cacheSealed {
 		conn.SendDirect(append([]byte{MsgBlockSealed}, block.Serialize()...))
 	}
-	fmt.Println("sending live block", len(cacheSealed))
+	fmt.Println("sending live block header")
 	conn.SendDirect(append([]byte{MsgNewBlock}, cloneLive.Header.Serialize()...))
+	fmt.Println("sending live block actions")
 	for n := 0; n < cloneLive.Actions.Len(); n++ {
 		conn.SendDirect(append([]byte{MsgAction}, cloneLive.Actions.Get(n)...))
 	}
+	fmt.Println("sending live block complete")
 	conn.Ready()
 }
 

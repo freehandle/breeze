@@ -2,6 +2,7 @@ package socket
 
 import (
 	"errors"
+	"log"
 )
 
 type CachedConnection struct {
@@ -19,7 +20,7 @@ func (c *CachedConnection) Send(data []byte) {
 }
 
 func (c *CachedConnection) SendDirect(data []byte) error {
-	if (!c.Live) || c.ready {
+	if !c.Live {
 		return errors.New("connection is dead")
 	}
 	if len(data) == 0 {
@@ -72,6 +73,7 @@ func NewCachedConnection(conn *SignedConnection) *CachedConnection {
 					data := msgCache[0]
 					msgCache = msgCache[1:]
 					if err := cached.SendDirect(data); err != nil {
+						log.Printf("error sending data: %v", err)
 						return
 					}
 					if N > 1 {

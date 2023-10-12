@@ -3,6 +3,7 @@ package poa
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"time"
 
@@ -102,15 +103,14 @@ func Genesis(config SingleAuthorityConfig) chan error {
 			case proposed := <-action:
 				if ok := blockchain.Validate(proposed); ok {
 					incorporated <- proposed
-				} else {
 				}
-			case <-cloned:
-				fmt.Println("cloned")
+				// TODO: give feedback to gateway?
+			case ok := <-cloned:
+				log.Printf("state cloned: %v", ok)
 			case <-ticker.C:
 				epoch := blockchain.LiveBlock.Header.Epoch
 				blockchain.SealOwnBlock()
 				sealed := blockchain.SealedBlocks[len(blockchain.SealedBlocks)-1]
-				//fmt.Printf("%+v\n", blockchain.SealedBlocks[len(blockchain.SealedBlocks)-1])
 				commit := make(map[uint64]*chain.BlockCommit)
 				if !blockchain.Cloning {
 					for e := blockchain.LastCommitEpoch + 1; e <= epoch; e++ {

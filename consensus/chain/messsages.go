@@ -5,23 +5,25 @@ import (
 )
 
 const (
-	MsgBlock byte = iota
-	MsgAction
-	MsgSyncRequest
-	MsgActionSubmit
-	MsgSyncError
-	MsgNewBlock
-	MsgSealBlock
-	MsgCommitBlock
-	MsgBlockBuilding
-	MsgBlockSealed
-	MsgBlockCommitted
-	MsgFullBlock
-	MsgProtocolNewBlock
-	MsgProtocolActionArray
-	MsgProtocolNewAction
-	MsgProtocolSealBlock
-	MsgProtocolCommitBlock
+	MsgBlock               byte = iota // breeze protocol new block with heder
+	MsgAction                          // sinsgle action
+	MsgActionArray                     // multiple actions
+	MsgSyncRequest                     // Request Syncrhonization starting at given epoch
+	MsgActionSubmit                    // Submit action to the network
+	MsgSyncError                       // Cannot synchronize
+	MsgNewBlock                        // Breeze new block with header
+	MsgSealBlock                       // Breeze Seal Block with seal
+	MsgCommitBlock                     // Breeze Node own Commit Block with invalidated
+	MsgBlockBuilding                   // Block under constructions
+	MsgBlockSealed                     // Block Seal
+	MsgBlockCommitted                  // Block Commit
+	MsgFullBlock                       // EntireBlockMessage
+	MsgProtocolNewBlock                // Sub-Protocol New Block Message
+	MsgProtocolActionArray             // Sub-Protocol Action Array Message
+	MsgProtocolNewAction               // Sub-Protocol New Action Message
+	MsgProtocolSealBlock               // Sub-Protool Seal Block Message
+	MsgProtocolCommitBlock             // Sub-Protocol Commit Block Message
+	MsgProtocolFullBlock               // Sub-Protocol Full Block Message
 )
 
 func BlockMessage(block []byte) []byte {
