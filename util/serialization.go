@@ -51,6 +51,21 @@ func PutTokenArray(b []crypto.Token, data *[]byte) {
 	}
 }
 
+// PutByteArray puts a byte array up to 2^32 bytes into a byte array
+func PutLongByteArray(b []byte, data *[]byte) {
+	if len(b) == 0 {
+		*data = append(*data, 0, 0)
+		return
+	}
+	if len(b) > 1<<32-1 {
+		*data = append(*data, append([]byte{255, 255, 255, 255}, b[0:1<<32-1]...)...)
+		return
+	}
+	v := len(b)
+	*data = append(*data, append([]byte{byte(v), byte(v >> 8), byte(v >> 16), byte(v >> 24)}, b...)...)
+}
+
+// PutByteArray puts a byte array up to 2^16 bytes into a byte array
 func PutByteArray(b []byte, data *[]byte) {
 	if len(b) == 0 {
 		*data = append(*data, 0, 0)
@@ -211,6 +226,21 @@ func ParseByteArrayArray(data []byte, position int) ([][]byte, int) {
 		output[n], position = ParseByteArray(data, position)
 	}
 	return output, position
+}
+
+func ParseLongByteArray(data []byte, position int) ([]byte, int) {
+	if position+3 >= len(data) {
+		return []byte{}, position
+	}
+	length := int(data[position+0]) | int(data[position+1])<<8 | int(data[position+2])<<16 | int(data[position+3])<<24
+	if length == 0 {
+		return []byte{}, position + 4
+	}
+	if position+length+4 > len(data) {
+		return []byte{}, position + length + 4
+	}
+	return (data[position+4 : position+length+4]), position + length + 4
+
 }
 
 func ParseByteArray(data []byte, position int) ([]byte, int) {
