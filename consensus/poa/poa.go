@@ -183,8 +183,8 @@ func Genesis(config SingleAuthorityConfig) chan error {
 
 func WaitForOutgoingSyncRequest(conn *socket.SignedConnection, outgoing chan OutgoindConnectionRequest) {
 	data, err := conn.Read()
-	fmt.Println("**********", data, chain.MsgSyncRequest)
 	if err != nil || len(data) != 9 || data[0] != chain.MsgSyncRequest {
+		fmt.Println("invalid sync request..................")
 		conn.Shutdown()
 		return
 	}
@@ -196,6 +196,7 @@ func WaitForProtocolActions(conn *socket.SignedConnection, terminate chan crypto
 	for {
 		data, err := conn.Read()
 		if err != nil || len(data) < 2 || data[0] != chain.MsgActionSubmit {
+			fmt.Println("invalid action..................")
 			conn.Shutdown()
 			terminate <- conn.Token
 			return

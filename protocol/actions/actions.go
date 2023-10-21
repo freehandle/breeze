@@ -6,16 +6,11 @@ import (
 )
 
 const (
-	ITransfer byte = iota
+	IVoid byte = iota
+	ITransfer
 	IDeposit
 	IWithdraw
-	IVoid
 	IUnkown
-)
-
-const (
-	NoProtocol uint32 = iota
-	Breeze
 )
 
 type HashAction struct {
@@ -113,14 +108,14 @@ func GetFeeFromBytes(action []byte) uint64 {
 
 func Protocol(action []byte) uint32 {
 	if len(action) < 86 || action[0] != 0 {
-		return NoProtocol
+		return 0
 	}
 	if action[1] == ITransfer || action[1] == IDeposit || action[1] == IWithdraw {
-		return Breeze
+		return 0
 	}
 	if action[1] == IVoid {
 		protocol, _ := util.ParseUint32(action, 10)
 		return protocol
 	}
-	return NoProtocol
+	return 0
 }

@@ -10,14 +10,12 @@ func (c *Chain) SyncBlocksServer(conn *socket.CachedConnection, epoch uint64) {
 	c.mu.Lock()
 	if len(c.RecentBlocks) > 0 && epoch < c.RecentBlocks[0].Header.Epoch {
 		c.mu.Unlock()
-		fmt.Println("node does not have information that old")
 		conn.Send(append([]byte{MsgSyncError}, []byte("node does not have information that old")...))
 		conn.Close()
 		conn.Live = false
 		return
 	}
-	if epoch >= c.LiveBlock.Header.Epoch {
-		fmt.Println("already sync", epoch, c.LiveBlock.Header.Epoch)
+	if epoch > c.LiveBlock.Header.Epoch {
 		conn.Ready()
 		c.mu.Unlock()
 		return

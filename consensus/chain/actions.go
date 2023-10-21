@@ -48,6 +48,9 @@ func (b *ActionArray) Serialize() []byte {
 }
 
 func (b *ActionArray) Hash() crypto.Hash {
+	if len(b.actions) == 0 {
+		return crypto.ZeroValueHash
+	}
 	return crypto.Hasher(b.data)
 }
 
