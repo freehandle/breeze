@@ -10,6 +10,10 @@ func PutToken(token crypto.Token, data *[]byte) {
 	*data = append(*data, token[:]...)
 }
 
+func PutSecret(secret crypto.PrivateKey, data *[]byte) {
+	*data = append(*data, secret[:]...)
+}
+
 func PutHash(hash crypto.Hash, data *[]byte) {
 	*data = append(*data, hash[:]...)
 }
@@ -136,6 +140,15 @@ func ParseToken(data []byte, position int) (crypto.Token, int) {
 	}
 	copy(token[:], data[position:position+crypto.TokenSize])
 	return token, position + crypto.TokenSize
+}
+
+func ParseSecret(data []byte, position int) (crypto.PrivateKey, int) {
+	var secret crypto.PrivateKey
+	if position+crypto.PrivateKeySize > len(data) {
+		return secret, position
+	}
+	copy(secret[:], data[position:position+crypto.PrivateKeySize])
+	return secret, position + crypto.PrivateKeySize
 }
 
 func ParseActionsArray(data []byte, position int) ([][]byte, int) {
