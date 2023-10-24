@@ -31,10 +31,15 @@ type OutgoindConnectionRequest struct {
 	epoch uint64
 }
 
+type EpochAndCommit struct {
+	Epoch  uint64
+	Commit *chain.BlockCommit
+}
+
 type NewBlock struct {
 	NewHeader chain.BlockHeader
 	OldSeal   chain.BlockSeal
-	OldCommit map[uint64]*chain.BlockCommit
+	OldCommit []EpochAndCommit
 }
 
 // Single Authorities listens to gateway port to receive instructions gateway providers
@@ -111,14 +116,14 @@ func Genesis(config SingleAuthorityConfig) chan error {
 				epoch := blockchain.LiveBlock.Header.Epoch
 				blockchain.SealOwnBlock()
 				sealed := blockchain.SealedBlocks[len(blockchain.SealedBlocks)-1]
-				commit := make(map[uint64]*chain.BlockCommit)
+				commit := make([]EpochAndCommit, 0)
 				if !blockchain.Cloning {
 					for e := blockchain.LastCommitEpoch + 1; e <= epoch; e++ {
 						if !blockchain.CommitBlock(e, config.Credentials) {
 							break // no more sealed blocks available
 						}
 						last := blockchain.RecentBlocks[len(blockchain.RecentBlocks)-1]
-						commit[e] = last.Commit
+						commit = append(commit, EpochAndCommit{Commit: last.Commit, Epoch: e})
 					}
 				}
 				if epoch%checksumBlockInterval == 0 {
@@ -146,8 +151,8 @@ func Genesis(config SingleAuthorityConfig) chan error {
 				if seal != nil {
 					pool.Broadcast(seal)
 				}
-				for epoch, commit := range newBlock.OldCommit {
-					msg := chain.CommitBlockMessage(epoch, commit)
+				for _, old := range newBlock.OldCommit {
+					msg := chain.CommitBlockMessage(old.Epoch, old.Commit)
 					if msg != nil {
 						pool.Broadcast(msg)
 					}
