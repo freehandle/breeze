@@ -3,6 +3,8 @@ package socket
 import (
 	"errors"
 	"log"
+
+	"github.com/freehandle/breeze/crypto"
 )
 
 type CachedConnection struct {
@@ -11,6 +13,10 @@ type CachedConnection struct {
 	ready bool
 	send  chan []byte
 	queue chan struct{}
+}
+
+func (c *CachedConnection) Token() crypto.Token {
+	return c.conn.Token
 }
 
 func (c *CachedConnection) Send(data []byte) {
@@ -48,13 +54,12 @@ func (c *CachedConnection) Close() {
 }
 
 func NewCachedConnection(conn *SignedConnection) *CachedConnection {
-
 	cached := &CachedConnection{
 		Live:  true,
 		conn:  conn,
 		ready: false,
 		send:  make(chan []byte),
-		queue: make(chan struct{}, 2),
+		queue: make(chan struct{}, 3), // 3 is to incorporate Ready event
 	}
 
 	msgCache := make([][]byte, 0)
