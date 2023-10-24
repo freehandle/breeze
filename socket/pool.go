@@ -1,6 +1,8 @@
 package socket
 
-import "github.com/freehandle/breeze/crypto"
+import (
+	"github.com/freehandle/breeze/crypto"
+)
 
 type ConnectionPool map[crypto.Token]*CachedConnection
 

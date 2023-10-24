@@ -1,6 +1,8 @@
 package state
 
 import (
+	"fmt"
+
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/protocol/actions"
 )
@@ -35,6 +37,7 @@ func (m *MutatingState) Mutations() *Mutations {
 func (c *MutatingState) Validate(data []byte) bool {
 	action := actions.ParseAction(data)
 	if action == nil {
+		fmt.Println("action is nil")
 		return false
 	}
 	//epoch := action.Epoch()
@@ -44,6 +47,7 @@ func (c *MutatingState) Validate(data []byte) bool {
 	//}
 	payments := action.Payments()
 	if !c.CanPay(payments) {
+		fmt.Println("cant pay")
 		return false
 	}
 	c.TransferPayments(payments)

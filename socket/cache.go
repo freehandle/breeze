@@ -42,7 +42,9 @@ func (c *CachedConnection) Ready() {
 }
 
 func (c *CachedConnection) Close() {
-	c.send <- nil
+	if c.Live {
+		c.send <- nil
+	}
 }
 
 func NewCachedConnection(conn *SignedConnection) *CachedConnection {

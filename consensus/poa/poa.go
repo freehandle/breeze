@@ -13,7 +13,7 @@ import (
 	"github.com/freehandle/breeze/util"
 )
 
-const checksumBlockInterval = 15 * 1 // 1 minutes
+const checksumBlockInterval = 15 * 60 // 1 minutes
 
 type SingleAuthorityConfig struct {
 	IncomingPort     int
@@ -106,8 +106,12 @@ func Genesis(config SingleAuthorityConfig) chan error {
 				incomingConnections[conn.Token] = conn
 				go WaitForProtocolActions(conn, endIncomming, action)
 			case proposed := <-action:
+				fmt.Print("breeze got message:")
 				if ok := blockchain.Validate(proposed); ok {
+					fmt.Printf("validated\n")
 					incorporated <- proposed
+				} else {
+					fmt.Printf("invalidated\n")
 				}
 				// TODO: give feedback to gateway?
 			case ok := <-cloned:
@@ -117,13 +121,15 @@ func Genesis(config SingleAuthorityConfig) chan error {
 				blockchain.SealOwnBlock()
 				sealed := blockchain.SealedBlocks[len(blockchain.SealedBlocks)-1]
 				commit := make([]EpochAndCommit, 0)
+				// commit will incorporate into state the mutating state actions
+				// when cloning commit is delayed until job is finished.
 				if !blockchain.Cloning {
 					for e := blockchain.LastCommitEpoch + 1; e <= epoch; e++ {
 						if !blockchain.CommitBlock(e, config.Credentials) {
 							break // no more sealed blocks available
 						}
 						last := blockchain.RecentBlocks[len(blockchain.RecentBlocks)-1]
-						commit = append(commit, EpochAndCommit{Commit: last.Commit, Epoch: e})
+						commit = append(commit, EpochAndCommit{Commit: last.Commit, Epoch: last.Header.Epoch})
 					}
 				}
 				if epoch%checksumBlockInterval == 0 {

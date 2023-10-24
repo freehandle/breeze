@@ -6,6 +6,12 @@ import (
 	"github.com/freehandle/breeze/crypto"
 )
 
+func Uint64ToBytes(v uint64) []byte {
+	bytes := make([]byte, 0, 8)
+	PutUint64(v, &bytes)
+	return bytes
+}
+
 func PutToken(token crypto.Token, data *[]byte) {
 	*data = append(*data, token[:]...)
 }

@@ -25,6 +25,8 @@ import (
 
 type Signature [SignatureSize]byte
 
+var ZeroSignature Signature
+
 func (s Signature) MarshalText() (text []byte, err error) {
 	text = make([]byte, 2*SignatureSize)
 	hex.Encode(text, s[:])

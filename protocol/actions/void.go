@@ -5,6 +5,8 @@ import (
 	"github.com/freehandle/breeze/util"
 )
 
+const voidTail = crypto.TokenSize + 8 + crypto.SignatureSize
+
 type Void struct {
 	TimeStamp uint64
 	Protocol  uint32
@@ -26,7 +28,8 @@ func (t *Void) serializeSign() []byte {
 	bytes := []byte{0, IVoid}
 	util.PutUint64(t.TimeStamp, &bytes)
 	util.PutUint32(t.Protocol, &bytes)
-	util.PutByteArray(t.Data, &bytes)
+	bytes = append(bytes, t.Data...)
+	//util.PutByteArray(t.Data, &bytes)
 	util.PutToken(t.Wallet, &bytes)
 	util.PutUint64(t.Fee, &bytes)
 	return bytes
@@ -72,7 +75,12 @@ func ParseVoid(data []byte) *Void {
 	position := 2
 	p.TimeStamp, position = util.ParseUint64(data, position)
 	p.Protocol, position = util.ParseUint32(data, position)
-	p.Data, position = util.ParseByteArray(data, position)
+	if len(data)-voidTail < position {
+		return nil
+	}
+	p.Data = data[position : len(data)-voidTail]
+	//p.Data, position = util.ParseByteArray(data, position)
+	position = len(data) - voidTail
 	p.Wallet, position = util.ParseToken(data, position)
 	p.Fee, position = util.ParseUint64(data, position)
 	if position >= len(data) {

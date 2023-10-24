@@ -21,7 +21,6 @@ package chain
 
 import (
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -183,7 +182,7 @@ func (c *Chain) CommitBlock(blockEpoch uint64, publisher crypto.PrivateKey) bool
 	validator.Incorporate(publisher.PublicKey())
 	c.LastCommitEpoch = block.Header.Epoch
 	c.LastCommitHash = block.Seal.Hash
-	fmt.Printf("block %v commited: %v actions\n", block.Header.Epoch, block.Actions.Len())
+	//fmt.Printf("block %v commited: %v actions\n", block.Header.Epoch, block.Actions.Len())
 	return true
 }
 
