@@ -2,6 +2,7 @@ package state
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/freehandle/breeze/crypto"
 )
@@ -29,35 +30,47 @@ func (s *State) Shutdown() {
 
 func NewGenesisState() (*State, crypto.PrivateKey) {
 	pubKey, prvKey := crypto.RandomAsymetricKey()
-	state := State{
-		Epoch:    0,
-		Wallets:  NewMemoryWalletStore(0, 8),
-		Deposits: NewMemoryWalletStore(0, 8),
-	}
-	state.Wallets.Credit(pubKey, 1e6)
-	state.Deposits.Credit(pubKey, 1e6)
-	return &state, prvKey
+	state := NewGenesisStateWithToken(pubKey, "")
+	return state, prvKey
 }
 
 func NewGenesisStateWithToken(token crypto.Token, filePath string) *State {
-	var state State
+	state := State{Epoch: 0}
 	if filePath == "" {
-		state = State{
-			Epoch:    0,
-			Wallets:  NewMemoryWalletStore(0, 8),
-			Deposits: NewMemoryWalletStore(0, 8),
+		if wallet := NewMemoryWalletStore(0, 8); wallet != nil {
+			state.Wallets = wallet
+		} else {
+			slog.Error("NewGenesisStateWithToken: could not create memory wallet")
+			return nil
+		}
+		if deposit := NewMemoryWalletStore(0, 8); deposit != nil {
+			state.Deposits = deposit
+		} else {
+			slog.Error("NewGenesisStateWithToken: could not create memory deposit")
+			return nil
 		}
 	} else {
-		state = State{
-			Epoch:    0,
-			Wallets:  NewFileWalletStore(fmt.Sprintf("%vwallet.dat", filePath), 0, 8),
-			Deposits: NewFileWalletStore(fmt.Sprintf("%vdeposit.dat", filePath), 0, 8),
+		if wallet := NewFileWalletStore(fmt.Sprintf("%vwallet.dat", filePath), 0, 8); wallet != nil {
+			state.Wallets = wallet
+		} else {
+			slog.Error("NewGenesisStateWithToken: could not create file wallet")
+			return nil
 		}
-
+		if deposit := NewFileWalletStore(fmt.Sprintf("%vdeposit.dat", filePath), 0, 8); deposit != nil {
+			state.Deposits = deposit
+		} else {
+			slog.Error("NewGenesisStateWithToken: could not create file deposit")
+			return nil
+		}
 	}
-
-	state.Wallets.Credit(token, 1e9)
-	state.Deposits.Credit(token, 1e9)
+	if !state.Wallets.Credit(token, 1e9) {
+		slog.Error("NewGenesisStateWithToken: could not credit wallet")
+		return nil
+	}
+	if !state.Deposits.Credit(token, 1e9) {
+		slog.Error("NewGenesisStateWithToken: could not credit deposit")
+		return nil
+	}
 	return &state
 }
 

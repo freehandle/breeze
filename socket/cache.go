@@ -3,6 +3,7 @@ package socket
 import (
 	"errors"
 	"log"
+	"log/slog"
 
 	"github.com/freehandle/breeze/crypto"
 )
@@ -33,8 +34,8 @@ func (c *CachedConnection) SendDirect(data []byte) error {
 		return nil
 	}
 	if err := c.conn.Send(data); err != nil {
-		c.conn.Shutdown()
 		c.Live = false
+		c.conn.Shutdown()
 		return err
 	}
 	return nil
@@ -48,7 +49,13 @@ func (c *CachedConnection) Ready() {
 }
 
 func (c *CachedConnection) Close() {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("panic in Close", "recover", r)
+		}
+	}()
 	if c.Live {
+		c.Live = false
 		c.send <- nil
 	}
 }

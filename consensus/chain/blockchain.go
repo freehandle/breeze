@@ -21,6 +21,7 @@ package chain
 
 import (
 	"errors"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -43,6 +44,8 @@ type Checksum struct {
 // rollover to any epoch after the last commit epoch. disaster recovery,
 // that means, the rollover before last commit epoch is not anticipated on the
 // structure and must be implemented separatedly.
+// Chain methods are expected to be panic free. They are dressed with recover
+// just in case something unanticipated happens.
 type Chain struct {
 	mu              sync.Mutex
 	NetworkHash     crypto.Hash
@@ -59,6 +62,13 @@ type Chain struct {
 	Checksum        *Checksum
 }
 
+// NewChainFromGenesisState calls NewGenesisStateWithToken to create a genesis
+// state with fungible tokens allocated to credentials and storing state data on
+// walletPath. If successfull it returns a new chain with the genesis state. The
+// state has not a Liveblock but has a valid Checksum with the Hash given by the
+// hash of the token associated to the credentials. This also serves as
+// NetworkHash.
+// Otherwise it returns nil.
 func NewChainFromGenesisState(credentials crypto.PrivateKey, walletPath string) *Chain {
 	genesis := state.NewGenesisStateWithToken(credentials.PublicKey(), walletPath)
 	if genesis == nil {
@@ -85,7 +95,12 @@ func NewChainFromGenesisState(credentials crypto.PrivateKey, walletPath string) 
 
 func (c *Chain) NextBlock(epoch uint64) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
+	defer func() {
+		c.mu.Unlock()
+		if r := recover(); r != nil {
+			slog.Error("chain NextBlock panic", "err", r)
+		}
+	}()
 	c.Incorporated.MoveForward()
 	c.LiveBlock = &BlockBuilder{
 		Header: BlockHeader{
@@ -117,6 +132,11 @@ func NewChainFromChecksumState(c *Checksum, credentials crypto.PrivateKey, lastB
 }
 
 func (c *Chain) CheckpointValidator(header BlockHeader) (*BlockBuilder, error) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("chain CheckpointValidator panic", "err", r)
+		}
+	}()
 	if header.Epoch <= c.LastCommitEpoch {
 		return nil, errors.New("cannot replace commited block outside recovery mode")
 	}
@@ -155,6 +175,11 @@ func (c *Chain) CheckpointValidator(header BlockHeader) (*BlockBuilder, error) {
 }
 
 func (c *Chain) CommitBlock(blockEpoch uint64, publisher crypto.PrivateKey) bool {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("chain CommitBlock panic", "err", r)
+		}
+	}()
 	if blockEpoch != c.LastCommitEpoch+1 {
 		return false // commit must be sequential
 	}
@@ -187,6 +212,14 @@ func (c *Chain) CommitBlock(blockEpoch uint64, publisher crypto.PrivateKey) bool
 }
 
 func (c *Chain) Validate(action []byte) bool {
+	if c.LiveBlock == nil {
+		slog.Error("chain Validate: no live block")
+		return false
+	}
+	if c.Incorporated == nil {
+		slog.Error("chain Validate: incorporated is nil")
+		return false
+	}
 	epoch := actions.GetEpochFromByteArray(action)
 	if epoch == 0 || epoch > c.LiveBlock.Header.Epoch || (epoch+MaxProtocolEpoch < c.LiveBlock.Header.Epoch) {
 		return false
@@ -204,6 +237,11 @@ func (c *Chain) SealOwnBlock() {
 }
 
 func (c *Chain) SealBlock(epoch uint64, hash crypto.Hash, signature crypto.Signature) error {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("chain SealBlock panic", "err", r)
+		}
+	}()
 	var block *BlockBuilder
 	if c.LiveBlock.Header.Epoch == epoch {
 		if !hash.Equal(c.LiveBlock.Hash()) {
@@ -247,6 +285,11 @@ func (c *Chain) SealBlock(epoch uint64, hash crypto.Hash, signature crypto.Signa
 }
 
 func (c *Chain) Rollover(epoch uint64) error {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("chain Rollover panic", "err", r)
+		}
+	}()
 	if epoch < c.LastCommitEpoch {
 		return errors.New("rollover to a previously commit only allowed in recovery mode")
 	}
@@ -277,6 +320,11 @@ func (c *Chain) Rollover(epoch uint64) error {
 }
 
 func (c *Chain) Recovery(epoch uint64) error {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("chain Recovery panic", "err", r)
+		}
+	}()
 	if epoch < c.Checksum.Epoch {
 		return errors.New("cannot automatically recover to an epoch before current checksum")
 	}
@@ -302,6 +350,10 @@ func (c *Chain) Recovery(epoch uint64) error {
 }
 
 func (c *Chain) Shutdown() {
-	c.CommitState.Shutdown()
-	c.Checksum.State.Shutdown()
+	if c.CommitState != nil {
+		c.CommitState.Shutdown()
+	}
+	if c.Checksum != nil && c.Checksum.State != nil {
+		c.Checksum.State.Shutdown()
+	}
 }

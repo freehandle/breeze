@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"net"
 	"time"
 
@@ -184,8 +185,11 @@ func Genesis(config SingleAuthorityConfig) chan error {
 					conn.Close()
 				}
 				go WaitForOutgoingSyncRequest(trustedConn, newOutgoing)
+			} else {
+				slog.Warn("poa outgoing listener error", "error", err)
+				finalize <- fmt.Errorf("could not accept outgoing connection: %v", err)
+				return
 			}
-
 		}
 	}()
 
@@ -195,7 +199,11 @@ func Genesis(config SingleAuthorityConfig) chan error {
 func WaitForOutgoingSyncRequest(conn *socket.SignedConnection, outgoing chan OutgoindConnectionRequest) {
 	data, err := conn.Read()
 	if err != nil || len(data) != 9 || data[0] != chain.MsgSyncRequest {
-		fmt.Println("invalid sync request..................")
+		if err != nil {
+			slog.Info("poa WaitForOutgoingSyncRequest: connection terminated", "connection", err)
+		} else {
+			slog.Info("poa WaitForOutgoingSyncRequest: invalid sync request", "connection", conn.Token)
+		}
 		conn.Shutdown()
 		return
 	}
@@ -207,7 +215,11 @@ func WaitForProtocolActions(conn *socket.SignedConnection, terminate chan crypto
 	for {
 		data, err := conn.Read()
 		if err != nil || len(data) < 2 || data[0] != chain.MsgActionSubmit {
-			fmt.Println("invalid action..................")
+			if err != nil {
+				slog.Info("poa WaitForProtocolActions: connection terminated", "connection", err)
+			} else {
+				slog.Info("poa WaitForProtocolActions: invalid action", "connection", conn.Token)
+			}
 			conn.Shutdown()
 			terminate <- conn.Token
 			return

@@ -2,11 +2,17 @@ package chain
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/freehandle/breeze/socket"
 )
 
 func (c *Chain) SyncBlocksServer(conn *socket.CachedConnection, epoch uint64) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("sync blocks server panic", r)
+		}
+	}()
 	c.mu.Lock()
 	if len(c.RecentBlocks) > 0 && epoch < c.RecentBlocks[0].Header.Epoch {
 		c.mu.Unlock()

@@ -32,26 +32,6 @@ var errCouldNotVerify = errors.New("could not verify communication")
 // The called verifies the signature and if ok, the connection is ready to be
 // used.
 
-// ValidateConnection is an interface used by handshake protocol to confirm if
-// a given token is accredited with rights to establish the connection.
-type ValidateConnection interface {
-	ValidateConnection(token crypto.Token) chan bool
-}
-
-type acceptAll struct{}
-
-func (a acceptAll) ValidateConnection(token crypto.Token) chan bool {
-	response := make(chan bool)
-	go func() {
-		response <- true
-	}()
-	return response
-}
-
-// An implementation with ValidateConnection interface that accepts all reequested
-// connections.
-var AcceptAllConnections = acceptAll{}
-
 // read the first byte (n) and read subsequent n-bytes from connection
 func readhs(conn net.Conn) ([]byte, error) {
 	length := make([]byte, 1)
