@@ -21,39 +21,39 @@ Within swell _2×f + 1_ nodes exchange messages of different kind in order to fo
 
 _r<sub>val</sub>_
 
-**while** _state_ is _proposing_ **do**
+01 **while** _state_ is _proposing_ **do**
 
+ 
+02
 &nbsp;&nbsp;&nbsp;&nbsp; 
-**receiving** proposal for round _r_ of value _v_  never confirmed:
+**upon** proposal ⟨ _e<sub>s</sub>_ ⟩<sub>_r_</sub> of value _e_ for round _r_ last seen on round _s_ (or never seen s=-1) **do:**
 \
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
-**if** not committed or last committed to _e_ **then**
+03 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+**if** not committed after _s_ or last committed to _e_ **then:**
 \
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-**broadcasta* _blank_ vote for the round _r_
+04&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+**broadcast** vote ⦅ _é_ ⦆<sub>_r_</sub> to value _e_ for the round _r_
 \
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-**else**
+05&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+**else:**
 \
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-**broadcast** 
+06&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+**broadcast** _blank_ vote for the round _r_
 
-&nbsp;&nbsp;&nbsp;&nbsp; 
-**receiving** proposal ⟨ _p_ · _s_ ⟩<sub>_r_</sub> and _2f + 1_ votes to _p_ for round _r<sub>p</sub>_ **do**
 \
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-**if** mot committed ater _r<sub>p
+07 **while** _state_ is _voting_ **do**
 
-for value _p_ seen on round _0_ **do**:
+08&nbsp;&nbsp;&nbsp;&nbsp; 
+**upon** _2×f + 1_ votes to any value for round _r_ **do once:** 
 \
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
-**if** not committed pr last committed to _p_ **then**
+09 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+**schedule** _TimeOutVote_( _r_ ) after _ΔT<sub>v</sub>_
+
+10&nbsp;&nbsp;&nbsp;&nbsp;
+**uppon** proposal ⟨ _e<sub>*</sub>_ ⟩<sub>_r_</sub> and _2×f + 1_ votes to _e_ for round _r_ **and** knowing _e_ **do:**
 \
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-**broadcast** vote to ⟨_p_ | 0⟩<sub>r</sub> 
+11&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+**boardcast** commit ⟦ _e_ ⟧<sub>_r_</sub> to value _e_ for the round _r_
 \
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-**else**
-\
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-**broadcast** 
+12&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+**update** _state_  to _committing_ 
