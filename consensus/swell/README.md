@@ -46,25 +46,33 @@ This multi-level, multi-round strategy ensures that all honest nodes will eventu
 
 **Require:** a known leader selection function that defines the leader node for every round that is capable of proposing a value for the committee, and a valid hash value _h_ for the leader at the round zero. 
 
-01 _r ← 0_
-\
-02 _h<sub>s</sub> ← h_  and  _s=0_ (for the leader of the first round) _h<sub>s</sub> ← ∅_ and _s=-1_ (for all others)
+_Keep track of the round, validated values and the last round which was validated, commited values and the last round committed._ 
 
-03 **upon** start execture _NewRound_( _r_ )
-
-04 **procedure** _NewRound_( _r_ ):
+01 _r ← 0_ (starting at round zero)
 \
-05&nbsp;&nbsp;&nbsp;&nbsp; _r ← r + 1_
+02 _h<sub>v</sub> ← h_  and  _v ← 0_ (for the leader of the first round) _h<sub>s</sub> ← ∅_ and _s=-1_ (for all others)
+\
+03 _h<sub>c</sub> ←_ ∅  and  _c ← -1_ 
+
+03 **upon** start **exectute** _NewRound_( _r_ )
+
+04 **procedure** _NewRound_( _r'_ ):
+\
+05&nbsp;&nbsp;&nbsp;&nbsp; _r ← r'_
 \
 06&nbsp;&nbsp;&nbsp;&nbsp; **update** _state_ to _proposing_ 
 \
 07&nbsp;&nbsp;&nbsp;&nbsp; **if** node is leader for the current round **then:**
 \
-08&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; **broadcast** proposal ⟨ _h<sub>s</sub>_ ⟩<sub>_r_</sub>
+08&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; **broadcast** proposal ⟨ _h<sub>c</sub>_ ⟩<sub>_r_</sub>
+\
+09&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; **update** _status_ to _voting_
 \
 09&nbsp;&nbsp;&nbsp;&nbsp; **else:**
 \
-10&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; **schedule** _TimeOutPropose_ **after** _ΔT<sub>p</sub>_
+10&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; **schedule** _TimeOutPropose_( _r_ ) to **execute after** _ΔT<sub>p</sub>_
+
+_Honest node votes blank if proposal not received in time._
 
 11 **procedure** _TimeoutPropose_( _r'_ ):
 \
@@ -82,16 +90,24 @@ This multi-level, multi-round strategy ensures that all honest nodes will eventu
 \
 18&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; **update** _status_ to _committing_
 
+_If there are no sufficient vote to commit move to the next round._
+
 19 **procedure** _TimeoutCommit_( _r'_ ):
 \
 20&nbsp;&nbsp;&nbsp;&nbsp; **if** _r' = r_  **and** _state_ is _committing_ **then:**
 \
 17&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; **execute** _NewRound_( _r + 1_ ) 
 
-_The following statements are executed in any order based on new messages received by the node._
+_The following statements are executed in any order based on new messages received by the node. Alterations on the global variables
+based on any rule does not affect those same variables for the other rules. For example, if a rule changes the status variable, this
+will not take effect until all the rules are processed. There are no ambiguous scenario on the rules, namelly there are no two rules
+that can update a variable to incompatible values at the same pass._
 
 18 **while** _state_ is _proposing_ **do**
- 
+
+_Honest node follows proposed value if not incompatible with a committed value. Otherwise vote blank._ 
+
+
 19
 &nbsp;&nbsp;&nbsp;&nbsp; 
 **upon** proposal ⟨ _e<sub>s</sub>_ ⟩<sub>_r_</sub> of value _e_ for round _r_ last seen on round _s_ (or never seen s=-1) **do:**
@@ -107,6 +123,9 @@ _The following statements are executed in any order based on new messages receiv
 \
 23 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 **broadcast** _blank_ vote for the round _r_
+\
+22 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+**update** _status_ to _committing_
 
 \
 24 **while** _state_ is _voting_ **do**
@@ -117,6 +136,8 @@ _The following statements are executed in any order based on new messages receiv
 26 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
 **schedule** _TimeOutVote_( _r_ ) after _ΔT<sub>v</sub>_
 
+_Given a proposed value and 2×f + 1 votes for that same value, granted knowledge of the underlying data for that produces a hash compatible with that value, trigger a commit:_
+
 27 &nbsp;&nbsp;&nbsp;&nbsp;
 **uppon** proposal ⟨ _e<sub>*</sub>_ ⟩<sub>_r_</sub> and _2×f + 1_ votes to _e_ for round _r_ **and** knowing _e_ **do:**
 \
@@ -125,3 +146,25 @@ _The following statements are executed in any order based on new messages receiv
 \
 29 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 **update** _state_  to _committing_ 
+
+_Given 2×f + 1 blank votes trigger a blank commit:_
+
+27 &nbsp;&nbsp;&nbsp;&nbsp;
+**uppon** _2×f + 1_ blank votes for round _r_  **do:**
+\
+28 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+**boardcast** blank commit ⟦ ∅ ⟧<sub>_r_</sub>
+\
+29 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+**update** _state_  to _committing_ 
+
+
+24 **while** _state_ is _voting_ **or** _committing_ **do:**
+
+25 &nbsp;&nbsp;&nbsp;&nbsp; 
+**upon** proposal ⟨ _h<sub>*</sub>_ ⟩<sub>_r_</sub> **and** _2×f + 1_ votes for _h_ on round _r_ **do:**
+votes to any value for round _r_ **do once:** 
+\
+26 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+_h<sub>v</sub> ← h **and** _v ← r_.
+
