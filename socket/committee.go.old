@@ -19,51 +19,47 @@ type CommitteeMember struct {
 	Token   crypto.Token
 }
 
-type committeePool[T TokenComparer] struct {
-	mu        *sync.Mutex
-	connected []T
+type committeepool struct {
+	mu        sync.Mutex
+	connected []*ChannelConnection
 	remaining []CommitteeMember
 	token     crypto.Token
 }
 
-type TokenComparer interface {
-	Is(crypto.Token) bool
-}
-
-func addToPool[T TokenComparer](conn *SignedConnection, pool *committeePool[T], NewT func(conn *SignedConnection) T) (bool, int) {
-	pool.mu.Lock()
-	defer pool.mu.Unlock()
+func (p *committeepool) add(conn *SignedConnection) (bool, int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	isnew := true
-	for _, r := range pool.connected {
-		if r.Is(pool.token) {
+	for _, r := range p.connected {
+		if r.Conn.Token.Equal(p.token) {
 			isnew = false
 		}
 	}
 	if isnew {
-		channel := NewT(conn)
-		pool.connected = append(pool.connected, channel)
+		channel := NewChannelConnection(conn)
+		p.connected = append(p.connected, channel)
 	}
-	for n, r := range pool.remaining {
-		if conn.Token.Equal(r.Token) {
-			pool.remaining = append(pool.remaining[:n], pool.remaining[n+1:]...)
+	for n, r := range p.remaining {
+		if r.Token.Equal(conn.Token) {
+			p.remaining = append(p.remaining[:n], p.remaining[n+1:]...)
 			break
 		}
 	}
-	return isnew, len(pool.remaining)
+	return isnew, len(p.remaining)
 }
 
-func isMember[T TokenComparer](token crypto.Token, pool *committeePool[T]) bool {
-	for _, r := range pool.connected {
-		if r.Is(token) {
+func (p *committeepool) check(token crypto.Token) bool {
+	for _, r := range p.connected {
+		if r.Conn.Token.Equal(token) {
 			return true
 		}
 	}
 	return false
 }
 
-func newPool[T TokenComparer](peers []CommitteeMember, connected []T, token crypto.Token, NewT func(conn *SignedConnection) T) *committeePool[T] {
-	pool := &committeePool[T]{
-		mu:        &sync.Mutex{},
+func newCommitteePool(peers []CommitteeMember, connected []*ChannelConnection, token crypto.Token) *committeepool {
+	pool := &committeepool{
+		mu:        sync.Mutex{},
 		connected: connected,
 		remaining: make([]CommitteeMember, 0),
 		token:     token,
@@ -74,7 +70,7 @@ func newPool[T TokenComparer](peers []CommitteeMember, connected []T, token cryp
 			continue
 		}
 		for _, conn := range connected {
-			if conn.Is(peer.Token) {
+			if conn.Conn.Token.Equal(peer.Token) {
 				exists = true
 				break
 			}
@@ -86,9 +82,9 @@ func newPool[T TokenComparer](peers []CommitteeMember, connected []T, token cryp
 	return pool
 }
 
-func AssembleCommittee[T TokenComparer](peers []CommitteeMember, connected []T, NewT func(*SignedConnection) T, credentials crypto.PrivateKey, port int) chan []T {
-	done := make(chan []T, 2)
-	pool := newPool(peers, connected, credentials.PublicKey(), NewT)
+func BuildCommittee(peers []CommitteeMember, connected []*ChannelConnection, credentials crypto.PrivateKey, port int) chan []*ChannelConnection {
+	done := make(chan []*ChannelConnection, 2)
+	pool := newCommitteePool(peers, connected, credentials.PublicKey())
 
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%v", port))
 	if err != nil {
@@ -103,7 +99,7 @@ func AssembleCommittee[T TokenComparer](peers []CommitteeMember, connected []T, 
 				time.Sleep(200 * time.Millisecond)
 				conn, err := Dial(address, credentials, token)
 				if err == nil {
-					ok, remaining := addToPool(conn, pool, NewT)
+					ok, remaining := pool.add(conn)
 					if !ok {
 						conn.Shutdown()
 					}
@@ -113,7 +109,7 @@ func AssembleCommittee[T TokenComparer](peers []CommitteeMember, connected []T, 
 					return
 				}
 			}
-			if !isMember(token, pool) {
+			if !pool.check(token) {
 				slog.Info("BuilderCommittee: could not connect to peer", "address", address, "error", err)
 			}
 		}(peer.Address, peer.Token)
@@ -129,7 +125,7 @@ func AssembleCommittee[T TokenComparer](peers []CommitteeMember, connected []T, 
 			if conn, err := listener.Accept(); err == nil {
 				trustedConn, err := PromoteConnection(conn, credentials, validConnections)
 				if err == nil {
-					_, remaining := addToPool(trustedConn, pool, NewT)
+					_, remaining := pool.add(trustedConn)
 					if remaining == 0 {
 						listener.Close()
 						break

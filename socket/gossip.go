@@ -7,7 +7,10 @@ import (
 	"github.com/freehandle/breeze/crypto"
 )
 
-const PingPongInterval = time.Second
+const (
+	PingPongInterval = time.Second
+	//ChannelConnMaxBuffer = 1000
+)
 
 type ChannelConnection struct {
 	Conn    *SignedConnection
@@ -15,6 +18,10 @@ type ChannelConnection struct {
 	Release chan struct{}
 	Iddle   bool
 	Live    bool
+}
+
+func (c *ChannelConnection) Is(token crypto.Token) bool {
+	return c.Conn.Token.Equal(token)
 }
 
 func (c *ChannelConnection) Activate() {
@@ -31,11 +38,16 @@ func (c *ChannelConnection) Send(msg []byte) {
 	}
 }
 
+func (c *ChannelConnection) Read() []byte {
+	return <-c.Signal
+}
+
 func NewChannelConnection(conn *SignedConnection) *ChannelConnection {
 	channel := &ChannelConnection{
 		Conn:    conn,
 		Signal:  make(chan []byte),
 		Release: make(chan struct{}),
+		Live:    true,
 	}
 	go func() {
 		defer func() {
@@ -52,9 +64,11 @@ func NewChannelConnection(conn *SignedConnection) *ChannelConnection {
 				return
 			}
 			if !channel.Iddle {
-				// ignore empty messages of ping/pong messages
-				if len(data) > 0 && (len(data) != 1 || data[0] != 255) {
+				if len(data) > 1 {
+					// ignore empty messages of ping/pong messages
 					channel.Signal <- data
+				} else if len(data) == 1 && data[0] == 0 {
+					channel.Iddle = true
 				}
 			}
 		}
