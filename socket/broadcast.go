@@ -95,8 +95,14 @@ type BroadcastPool struct {
 	leader  int
 }
 
-func (b *BroadcastPool) NewLeader() {
-	b.leader = (b.leader + 1) % len(b.members)
+func (b *BroadcastPool) NewLeader(token crypto.Token) *BufferedChannel {
+	for n, member := range b.members {
+		if member.Is(token) {
+			b.leader = n
+			return member
+		}
+	}
+	return nil
 }
 
 func (b *BroadcastPool) CountShift(shift int) int {
@@ -107,5 +113,14 @@ func (b *BroadcastPool) CountShift(shift int) int {
 func (b *BroadcastPool) Send(data []byte) {
 	for _, member := range b.members {
 		member.Conn.Send(data)
+	}
+}
+
+func AssembleBroadcastPool(peers []CommitteeMember, credentials crypto.PrivateKey, port int) *BroadcastPool {
+	committee := AssembleCommittee[*BufferedChannel](peers, make([]*BufferedChannel, 0), NewBufferredChannel, credentials, port)
+	members := <-committee
+	return &BroadcastPool{
+		members: members,
+		leader:  0,
 	}
 }

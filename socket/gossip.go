@@ -163,3 +163,9 @@ func NewGossip(connections []*ChannelConnection) *Gossip {
 	}
 	return gossip
 }
+
+func AssembleGossipNetwork(peers []CommitteeMember, credentials crypto.PrivateKey, port int) *Gossip {
+	committee := AssembleCommittee[*ChannelConnection](peers, make([]*ChannelConnection, 0), NewChannelConnection, credentials, port)
+	members := <-committee
+	return NewGossip(members)
+}
