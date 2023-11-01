@@ -1,6 +1,7 @@
 package socket
 
 import (
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -164,8 +165,18 @@ func NewGossip(connections []*ChannelConnection) *Gossip {
 	return gossip
 }
 
-func AssembleGossipNetwork(peers []CommitteeMember, credentials crypto.PrivateKey, port int) *Gossip {
-	committee := AssembleCommittee[*ChannelConnection](peers, make([]*ChannelConnection, 0), NewChannelConnection, credentials, port)
+func AssembleGossipNetwork(peers []CommitteeMember, credentials crypto.PrivateKey, port int, existing *Gossip) *Gossip {
+	for n, peer := range peers {
+		peers[n] = CommitteeMember{
+			Address: fmt.Sprintf("%v:%v", peer.Address, port),
+			Token:   peer.Token,
+		}
+	}
+	connected := make([]*ChannelConnection, 0)
+	if existing != nil {
+		connected = existing.members
+	}
+	committee := AssembleCommittee[*ChannelConnection](peers, connected, NewChannelConnection, credentials, port)
 	members := <-committee
 	return NewGossip(members)
 }

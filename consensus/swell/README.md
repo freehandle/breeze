@@ -163,8 +163,34 @@ _Given 2×f + 1 blank votes trigger a blank commit:_
 
 25 &nbsp;&nbsp;&nbsp;&nbsp; 
 **upon** proposal ⟨ _h<sub>*</sub>_ ⟩<sub>_r_</sub> **and** _2×f + 1_ votes for _h_ on round _r_ **do:**
-votes to any value for round _r_ **do once:** 
 \
 26 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
-_h<sub>v</sub> ← h **and** _v ← r_.
+_h<sub>v</sub> ← h_
+\
+26 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+_v ← r_.
+
+24 **while** in any _state_ **do:**
+
+25 &nbsp;&nbsp;&nbsp;&nbsp; 
+**upon** _2×f + 1_ commitments for any value on round _r_ **do once:**
+\
+26 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+**schedule** _TimeoutCommit_( _r_ ) to **execute after** _ΔT<sub>c</sub>_
+
+_2×f + 1 commit trigger consensus. Node shall not communicate any other message for the committee._
+
+25 &nbsp;&nbsp;&nbsp;&nbsp; 
+**upon** proposal ⟨ _h<sub>*</sub>_ ⟩<sub>_r_</sub> **and** _2×f + 1_ commitments to _h_ for round _r_ **do:**
+\
+26 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+**terminate** with consenus on value _h_
+
+25 &nbsp;&nbsp;&nbsp;&nbsp; 
+**upon** receiving any _2f_ messages of any kind for round _r' > r_ **do:**
+\
+26 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+**execute** _NewRound_( _r'_ )
+
+
 

@@ -38,6 +38,11 @@ type Checksum struct {
 	Hash  crypto.Hash
 }
 
+type ClockSyncronization struct {
+	Epoch     uint64
+	TimeStamp time.Time
+}
+
 // Chain is a non-disputed block interface... one block proposed for each
 // epoch, every block is sealed before the proposal of a new block.
 // Final commit of blocks can be delayed and the chain might be asked to
@@ -60,6 +65,7 @@ type Chain struct {
 	RecentBlocks    []*CommitBlock
 	Cloning         bool
 	Checksum        *Checksum
+	Clock           ClockSyncronization
 }
 
 // NewChainFromGenesisState calls NewGenesisStateWithToken to create a genesis
@@ -102,17 +108,18 @@ func (c *Chain) NextBlock(epoch uint64) {
 		}
 	}()
 	c.Incorporated.MoveForward()
-	c.LiveBlock = &BlockBuilder{
-		Header: BlockHeader{
-			NetworkHash:    c.NetworkHash,
-			Epoch:          epoch,
-			CheckPoint:     c.LastCommitEpoch,
-			CheckpointHash: c.LastCommitHash,
-			Proposer:       c.Credentials.PublicKey(),
-			ProposedAt:     time.Now(),
-		},
-		Actions:   NewActionArray(),
-		Validator: c.CommitState.Validator(state.NewMutations(epoch), epoch),
+	header := BlockHeader{
+		NetworkHash:    c.NetworkHash,
+		Epoch:          epoch,
+		CheckPoint:     c.LastCommitEpoch,
+		CheckpointHash: c.LastCommitHash,
+		Proposer:       c.Credentials.PublicKey(),
+		ProposedAt:     time.Now(),
+	}
+	var err error
+	c.LiveBlock, err = c.CheckpointValidator(header)
+	if err != nil {
+		slog.Error("chain NextBlock: checkpoint validator failed", "err", err)
 	}
 }
 
@@ -231,9 +238,11 @@ func (c *Chain) Validate(action []byte) bool {
 	return c.LiveBlock.Validate(action)
 }
 
-func (c *Chain) SealOwnBlock() {
-	c.SealedBlocks = append(c.SealedBlocks, c.LiveBlock.Seal(c.Credentials))
+func (c *Chain) SealOwnBlock() BlockSeal {
+	sealed := c.LiveBlock.Seal(c.Credentials)
+	c.SealedBlocks = append(c.SealedBlocks, sealed)
 	c.LiveBlock = nil
+	return sealed.Seal
 }
 
 func (c *Chain) SealBlock(epoch uint64, hash crypto.Hash, signature crypto.Signature) error {

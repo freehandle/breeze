@@ -1,6 +1,10 @@
 package swell
 
-import "log/slog"
+import (
+	"log/slog"
+
+	"github.com/freehandle/breeze/util"
+)
 
 type DuplicateVote struct {
 	One *RoundVote
@@ -29,6 +33,67 @@ func NewDuplicate() *Duplicate {
 		Commits:   make([]DuplicateCommit, 0),
 		Proposals: make([]DuplicateProposal, 0),
 	}
+}
+
+func (d *Duplicate) Serialize() []byte {
+	bytes := []byte{}
+	util.PutUint16(uint16(len(d.Votes)), &bytes)
+	for _, vote := range d.Votes {
+		util.PutByteArray(vote.One.Serialize(), &bytes)
+		util.PutByteArray(vote.Two.Serialize(), &bytes)
+	}
+	util.PutUint16(uint16(len(d.Commits)), &bytes)
+	for _, commit := range d.Commits {
+		util.PutByteArray(commit.One.Serialize(), &bytes)
+		util.PutByteArray(commit.Two.Serialize(), &bytes)
+	}
+	util.PutUint16(uint16(len(d.Proposals)), &bytes)
+	for _, proposal := range d.Proposals {
+		util.PutByteArray(proposal.One.Serialize(), &bytes)
+		util.PutByteArray(proposal.Two.Serialize(), &bytes)
+	}
+	return bytes
+}
+
+func ParseDuplicate(data []byte, position int) (*Duplicate, int) {
+	duplicate := NewDuplicate()
+	var count uint16
+	count, position = util.ParseUint16(data, position)
+	var one, two []byte
+	for i := uint16(0); i < count; i++ {
+		one, position = util.ParseByteArray(data, position)
+		two, position = util.ParseByteArray(data, position)
+		oneVote := ParseRoundVote(one)
+		twoVote := ParseRoundVote(two)
+		if oneVote == nil || twoVote == nil {
+			return nil, len(data)
+		}
+		duplicate.AddVote(oneVote, twoVote)
+	}
+	count, position = util.ParseUint16(data, position)
+	for i := uint16(0); i < count; i++ {
+		one, position = util.ParseByteArray(data, position)
+		two, position = util.ParseByteArray(data, position)
+		oneCommit := ParseRoundCommit(one)
+		twoCommit := ParseRoundCommit(two)
+		if oneCommit == nil || twoCommit == nil {
+			return nil, len(data)
+		}
+		duplicate.AddCommit(oneCommit, twoCommit)
+	}
+	count, position = util.ParseUint16(data, position)
+	for i := uint16(0); i < count; i++ {
+		one, position = util.ParseByteArray(data, position)
+		two, position = util.ParseByteArray(data, position)
+		onePropose := ParseRoundPropose(one)
+		twoPropose := ParseRoundPropose(two)
+		if onePropose == nil || twoPropose == nil {
+			return nil, len(data)
+		}
+
+		duplicate.AddProposal(onePropose, twoPropose)
+	}
+	return duplicate, position
 }
 
 func (d *Duplicate) HasViolations() bool {

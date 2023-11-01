@@ -11,6 +11,7 @@ const (
 	RoundCommitMsg  = 2
 	DuplicateMsg    = 3
 	DoneMsg         = 4
+	CandidateMsg    = 5
 )
 
 type ConsensusMessage interface {

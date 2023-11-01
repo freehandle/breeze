@@ -14,6 +14,9 @@ type BlockHeader struct {
 	CheckpointHash crypto.Hash
 	Proposer       crypto.Token
 	ProposedAt     time.Time
+	Duplicate      []byte // Evidence for rule violations on the consesus pool
+	Checksum       []byte // State checksum
+	Candidate      []byte // Validator candidate evidence for state checksum
 }
 
 func (b BlockHeader) Clone() BlockHeader {

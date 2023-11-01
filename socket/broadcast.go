@@ -1,6 +1,7 @@
 package socket
 
 import (
+	"fmt"
 	"log/slog"
 
 	"github.com/freehandle/breeze/crypto"
@@ -116,8 +117,18 @@ func (b *BroadcastPool) Send(data []byte) {
 	}
 }
 
-func AssembleBroadcastPool(peers []CommitteeMember, credentials crypto.PrivateKey, port int) *BroadcastPool {
-	committee := AssembleCommittee[*BufferedChannel](peers, make([]*BufferedChannel, 0), NewBufferredChannel, credentials, port)
+func AssembleBroadcastPool(peers []CommitteeMember, credentials crypto.PrivateKey, port int, existing *BroadcastPool) *BroadcastPool {
+	for n, peer := range peers {
+		peers[n] = CommitteeMember{
+			Address: fmt.Sprintf("%v:%v", peer.Address, port),
+			Token:   peer.Token,
+		}
+	}
+	connected := make([]*BufferedChannel, 0)
+	if existing != nil {
+		connected = existing.members
+	}
+	committee := AssembleCommittee[*BufferedChannel](peers, connected, NewBufferredChannel, credentials, port)
 	members := <-committee
 	return &BroadcastPool{
 		members: members,
