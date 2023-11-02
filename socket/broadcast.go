@@ -9,11 +9,14 @@ import (
 
 // BufferedChannel buffers read data from a connection
 type BufferedChannel struct {
-	Conn  *SignedConnection
-	Live  bool
-	next  chan struct{}
-	count chan chan int
-	send  chan []byte
+	Conn      *SignedConnection
+	Live      bool
+	next      chan struct{}
+	nextside  chan struct{}
+	count     chan chan int
+	countside chan chan int
+	send      chan []byte
+	side      chan []byte
 }
 
 func (b *BufferedChannel) Is(token crypto.Token) bool {
@@ -29,25 +32,47 @@ func (b *BufferedChannel) Read() []byte {
 	return data
 }
 
+func (b *BufferedChannel) ReadSide() []byte {
+	b.nextside <- struct{}{}
+	data, ok := <-b.side
+	if !ok {
+		close(b.nextside)
+	}
+	return data
+}
+
 func (b *BufferedChannel) Len() int {
 	c := make(chan int)
 	b.count <- c
 	return <-c
 }
 
+func (b *BufferedChannel) Send(data []byte) {
+	b.Conn.Send(append([]byte{0}, data...))
+}
+
+func (b *BufferedChannel) SendSide(data []byte) {
+	b.Conn.Send(append([]byte{1}, data...))
+}
+
 func NewBufferredChannel(conn *SignedConnection) *BufferedChannel {
 	buffered := &BufferedChannel{
-		Conn:  conn,
-		next:  make(chan struct{}),
-		count: make(chan chan int),
-		send:  make(chan []byte),
+		Conn:      conn,
+		next:      make(chan struct{}),
+		count:     make(chan chan int),
+		send:      make(chan []byte),
+		nextside:  make(chan struct{}),
+		countside: make(chan chan int),
+		side:      make(chan []byte),
 	}
 
 	queue := make(chan []byte, 2)
 
 	go func() {
 		buffer := make([][]byte, 0)
+		bufferside := make([][]byte, 0)
 		waiting := false
+		waitingside := false
 		for {
 			select {
 			case data := <-queue:
@@ -56,11 +81,20 @@ func NewBufferredChannel(conn *SignedConnection) *BufferedChannel {
 					close(queue)
 					return
 				}
-				if waiting {
-					buffered.send <- data
-					waiting = false
+				if data[0] == 0 {
+					if waiting {
+						buffered.send <- data
+						waiting = false
+					} else {
+						buffer = append(buffer, data)
+					}
 				} else {
-					buffer = append(buffer, data)
+					if waitingside {
+						buffered.side <- data
+						waitingside = false
+					} else {
+						buffer = append(bufferside, data)
+					}
 				}
 			case <-buffered.next:
 				if len(buffer) == 0 {
@@ -69,10 +103,18 @@ func NewBufferredChannel(conn *SignedConnection) *BufferedChannel {
 					buffered.send <- buffer[0]
 					buffer = buffer[1:]
 				}
+			case <-buffered.nextside:
+				if len(bufferside) == 0 {
+					waitingside = true
+				} else {
+					buffered.side <- bufferside[0]
+					bufferside = bufferside[1:]
+				}
 			case count := <-buffered.count:
 				count <- len(buffer)
+			case count := <-buffered.countside:
+				count <- len(bufferside)
 			}
-
 		}
 	}()
 

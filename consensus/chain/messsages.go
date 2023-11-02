@@ -1,6 +1,7 @@
 package chain
 
 import (
+	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/util"
 )
 
@@ -24,10 +25,18 @@ const (
 	MsgProtocolSealBlock               // Sub-Protool Seal Block Message
 	MsgProtocolCommitBlock             // Sub-Protocol Commit Block Message
 	MsgProtocolFullBlock               // Sub-Protocol Full Block Message
+	MsgRequestBlock                    // Request a block
 )
 
 func BlockMessage(block []byte) []byte {
 	return append([]byte{MsgBlock}, block...)
+}
+
+func RequestBlockMessage(epoch uint64, hash crypto.Hash) []byte {
+	bytes := []byte{MsgRequestBlock}
+	util.PutUint64(epoch, &bytes)
+	util.PutHash(hash, &bytes)
+	return bytes
 }
 
 func ActionMessage(action []byte) []byte {

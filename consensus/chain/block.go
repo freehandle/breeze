@@ -59,6 +59,14 @@ func (b *BlockBuilder) Seal(credentials crypto.PrivateKey) *SealedBlock {
 	}
 }
 
+func (b *BlockBuilder) ImprintSeal(seal BlockSeal) *SealedBlock {
+	return &SealedBlock{
+		Header:  b.Header,
+		Actions: b.Actions,
+		Seal:    seal,
+	}
+}
+
 type SealedBlock struct {
 	Header    BlockHeader
 	Actions   *ActionArray
