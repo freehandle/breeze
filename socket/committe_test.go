@@ -67,9 +67,9 @@ func TestBuildCommittee(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		for j := 0; j < 3; j++ {
 			if i != j {
-				all[i][j].Send([]byte{12, 13})
-				bytes := all[j][i].Read()
-				if len(bytes) != 2 || bytes[0] != 12 || bytes[1] != 13 {
+				all[i][j].Send([]byte{12, 1, 0, 0, 0, 0, 0, 0, 0, 13})
+				bytes := all[j][i].Read(1)
+				if len(bytes) != 10 || bytes[0] != 12 || bytes[9] != 13 {
 					t.Error("Expected to receive [12, 13], got", bytes)
 				}
 

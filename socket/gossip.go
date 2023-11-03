@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/freehandle/breeze/crypto"
+	"github.com/freehandle/breeze/util"
 )
 
 const (
@@ -15,8 +16,8 @@ const (
 
 type ChannelConnection struct {
 	Conn    *SignedConnection
-	Signal  chan []byte
-	Release chan struct{}
+	Signal  map[uint64]chan []byte
+	release chan uint64
 	Iddle   bool
 	Live    bool
 }
@@ -33,23 +34,66 @@ func (c *ChannelConnection) Sleep() {
 	c.Iddle = true
 }
 
+func (c *ChannelConnection) Register(epoch uint64, signal chan []byte) {
+	c.Signal[epoch] = signal
+}
+
+func (c *ChannelConnection) Release(epoch uint64) {
+	c.release <- epoch
+}
+
 func (c *ChannelConnection) Send(msg []byte) {
 	if c.Live {
 		c.Conn.Send(msg)
 	}
 }
 
-func (c *ChannelConnection) Read() []byte {
-	return <-c.Signal
+func (c *ChannelConnection) Read(epoch uint64) []byte {
+	reader, ok := c.Signal[epoch]
+	if !ok {
+		return nil
+	}
+	return <-reader
 }
 
 func NewChannelConnection(conn *SignedConnection) *ChannelConnection {
 	channel := &ChannelConnection{
 		Conn:    conn,
-		Signal:  make(chan []byte),
-		Release: make(chan struct{}),
+		Signal:  make(map[uint64]chan []byte),
+		release: make(chan uint64),
 		Live:    true,
 	}
+
+	allsignals := make(chan []byte)
+
+	go func() {
+		for {
+			select {
+			case epoch := <-channel.release:
+				// Release all signals
+				if epoch == 0 {
+					for _, signal := range channel.Signal {
+						close(signal)
+					}
+					channel.Signal = make(map[uint64]chan []byte)
+					channel.Iddle = true
+				}
+				// Release specific signal
+				if signal, ok := channel.Signal[epoch]; ok {
+					close(signal)
+					delete(channel.Signal, epoch)
+				}
+			case data := <-allsignals:
+				if len(data) >= 9 {
+					epoch, _ := util.ParseUint64(data, 1)
+					if signal, ok := channel.Signal[epoch]; ok {
+						signal <- data
+					}
+				}
+			}
+		}
+	}()
+
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -61,14 +105,16 @@ func NewChannelConnection(conn *SignedConnection) *ChannelConnection {
 			if err != nil {
 				slog.Info("channel connection: could not read data", "error", err)
 				channel.Live = false
-				close(channel.Signal)
+				for _, signal := range channel.Signal {
+					close(signal)
+				}
 				return
 			}
 			if !channel.Iddle {
-				if len(data) > 1 {
-					// ignore empty messages of ping/pong messages
-					channel.Signal <- data
+				if len(data) > 9 {
+					allsignals <- data
 				} else if len(data) == 1 && data[0] == 0 {
+					channel.release <- 0
 					channel.Iddle = true
 				}
 			}
@@ -102,6 +148,7 @@ type GossipMessage struct {
 }
 
 type Gossip struct {
+	epoch   uint64
 	members []*ChannelConnection
 	Signal  chan GossipMessage
 	hashes  map[crypto.Hash]struct{}
@@ -109,14 +156,14 @@ type Gossip struct {
 
 func (g *Gossip) Release() {
 	for _, conn := range g.members {
-		conn.Release <- struct{}{}
+		conn.release <- g.epoch
 	}
 }
 
 func (g *Gossip) ReleaseToken(token crypto.Token) {
 	for _, conn := range g.members {
 		if conn.Conn.Token.Equal(token) {
-			conn.Release <- struct{}{}
+			conn.release <- g.epoch
 		}
 	}
 }
@@ -141,7 +188,7 @@ func (g *Gossip) BroadcastExcept(msg []byte, token crypto.Token) {
 	}
 }
 
-func NewGossip(connections []*ChannelConnection) *Gossip {
+func GroupGossip(epoch uint64, connections []*ChannelConnection) *Gossip {
 	gossip := &Gossip{
 		members: connections,
 		Signal:  make(chan GossipMessage),
@@ -149,15 +196,16 @@ func NewGossip(connections []*ChannelConnection) *Gossip {
 	}
 	for _, connection := range connections {
 		go func(conn *ChannelConnection) {
+			signal := make(chan []byte)
+			conn.Register(epoch, signal)
 			for {
-				select {
-				case <-conn.Release:
+				msg, ok := <-signal
+				if !ok {
 					return
-				case msg := <-conn.Signal:
-					hash := crypto.Hasher(msg)
-					if _, ok := gossip.hashes[hash]; !ok {
-						gossip.Signal <- GossipMessage{Signal: msg, Token: conn.Conn.Token}
-					}
+				}
+				hash := crypto.Hasher(msg)
+				if _, ok := gossip.hashes[hash]; !ok {
+					gossip.Signal <- GossipMessage{Signal: msg, Token: conn.Conn.Token}
 				}
 			}
 		}(connection)
@@ -165,18 +213,40 @@ func NewGossip(connections []*ChannelConnection) *Gossip {
 	return gossip
 }
 
-func AssembleGossipNetwork(peers []CommitteeMember, credentials crypto.PrivateKey, port int, existing *Gossip) *Gossip {
+/*
+	func NewGossip(connections []*ChannelConnection) *Gossip {
+		gossip := &Gossip{
+			members: connections,
+			Signal:  make(chan GossipMessage),
+			hashes:  make(map[crypto.Hash]struct{}),
+		}
+		for _, connection := range connections {
+			go func(conn *ChannelConnection) {
+				for {
+					select {
+					case <-conn.Release:
+						return
+					case msg := <-conn.Signal:
+						hash := crypto.Hasher(msg)
+						if _, ok := gossip.hashes[hash]; !ok {
+							gossip.Signal <- GossipMessage{Signal: msg, Token: conn.Conn.Token}
+						}
+					}
+				}
+			}(connection)
+		}
+		return gossip
+	}
+*/
+
+func AssembleChannelNetwork(peers []CommitteeMember, credentials crypto.PrivateKey, port int, existing []*ChannelConnection) []*ChannelConnection {
 	for n, peer := range peers {
 		peers[n] = CommitteeMember{
 			Address: fmt.Sprintf("%v:%v", peer.Address, port),
 			Token:   peer.Token,
 		}
 	}
-	connected := make([]*ChannelConnection, 0)
-	if existing != nil {
-		connected = existing.members
-	}
-	committee := AssembleCommittee[*ChannelConnection](peers, connected, NewChannelConnection, credentials, port)
+	committee := AssembleCommittee[*ChannelConnection](peers, existing, NewChannelConnection, credentials, port)
 	members := <-committee
-	return NewGossip(members)
+	return members
 }

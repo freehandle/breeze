@@ -17,6 +17,11 @@ const (
 	MaxCommitteeSize = 100
 )
 
+type Proofer interface {
+	Punish(duplicates *Duplicate)
+	DeterminePool(chain *chain.Chain, candidates []ValidatorCandidate, epoch uint64) Validators
+}
+
 type Node struct {
 	checkpoint  uint64
 	blockchain  *chain.Blockchain
@@ -67,13 +72,8 @@ func (n *Node) RunEpoch(epoch uint64) chan struct{} {
 	pool := LaunchPooling(*committee, n.credentials)
 	leader := n.order[leaderCount]
 	if leader.Equal(n.credentials.PublicKey()) {
-
+		BuildBlock(epoch, n.blockchain, committee.gossip, n.actions, n.credentials, pool)
 	}
-}
-
-type Proofer interface {
-	Punish(duplicates *Duplicate)
-	DeterminePool(chain *chain.Chain, candidates []ValidatorCandidate, epoch uint64) Validators
 }
 
 type retrievalStatus struct {

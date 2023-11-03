@@ -39,24 +39,24 @@ func (h TokenHashArray) Swap(i, j int) {
 	h[i], h[j] = h[j], h[i]
 }
 
-type ValidatorPool struct {
+type ChecksumWindowValidatorPool struct {
 	credentials crypto.PrivateKey
 	order       []crypto.Token
 	weights     map[crypto.Token]int
-	consensus   *socket.Gossip
-	blocks      *socket.BroadcastPool
+	consensus   []*socket.ChannelConnection
+	blocks      []*socket.BufferedChannel
 }
 
-func LaunchValidatorPool(validators []Validator, credentials crypto.PrivateKey, seed []byte) *ValidatorPool {
-	pool := &ValidatorPool{
+func LaunchValidatorPool(validators []Validator, credentials crypto.PrivateKey, seed []byte) *ChecksumWindowValidatorPool {
+	pool := &ChecksumWindowValidatorPool{
 		credentials: credentials,
 	}
 	return pool.PrepareNext(validators, seed)
 }
 
-func (v *ValidatorPool) PrepareNext(validators []Validator, seed []byte) *ValidatorPool {
+func (v *ChecksumWindowValidatorPool) PrepareNext(validators []Validator, seed []byte) *ChecksumWindowValidatorPool {
 
-	pool := &ValidatorPool{
+	pool := &ChecksumWindowValidatorPool{
 		credentials: v.credentials,
 		order:       make([]crypto.Token, 0),
 		weights:     make(map[crypto.Token]int),
@@ -91,7 +91,7 @@ func (v *ValidatorPool) PrepareNext(validators []Validator, seed []byte) *Valida
 		}
 	}
 
-	pool.consensus = socket.AssembleGossipNetwork(peers, v.credentials, 5401, v.consensus)
+	pool.consensus = socket.AssembleChannelNetwork(peers, v.credentials, 5401, v.consensus)
 	pool.blocks = socket.AssembleBroadcastPool(peers, v.credentials, 5400, v.blocks)
 	return pool
 }
