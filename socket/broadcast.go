@@ -15,8 +15,8 @@ type BufferedChannel struct {
 	nextside  chan struct{}
 	count     chan chan int
 	countside chan chan int
-	send      chan []byte
-	side      chan []byte
+	read      chan []byte
+	readSide  chan []byte
 }
 
 func (b *BufferedChannel) Is(token crypto.Token) bool {
@@ -25,7 +25,7 @@ func (b *BufferedChannel) Is(token crypto.Token) bool {
 
 func (b *BufferedChannel) Read() []byte {
 	b.next <- struct{}{}
-	data, ok := <-b.send
+	data, ok := <-b.read
 	if !ok {
 		close(b.next)
 	}
@@ -34,7 +34,7 @@ func (b *BufferedChannel) Read() []byte {
 
 func (b *BufferedChannel) ReadSide() []byte {
 	b.nextside <- struct{}{}
-	data, ok := <-b.side
+	data, ok := <-b.readSide
 	if !ok {
 		close(b.nextside)
 	}
@@ -60,10 +60,10 @@ func NewBufferredChannel(conn *SignedConnection) *BufferedChannel {
 		Conn:      conn,
 		next:      make(chan struct{}),
 		count:     make(chan chan int),
-		send:      make(chan []byte),
+		read:      make(chan []byte),
 		nextside:  make(chan struct{}),
 		countside: make(chan chan int),
-		side:      make(chan []byte),
+		readSide:  make(chan []byte),
 	}
 
 	queue := make(chan []byte, 2)
@@ -77,20 +77,20 @@ func NewBufferredChannel(conn *SignedConnection) *BufferedChannel {
 			select {
 			case data := <-queue:
 				if len(data) == 0 {
-					close(buffered.send)
+					close(buffered.read)
 					close(queue)
 					return
 				}
 				if data[0] == 0 {
 					if waiting {
-						buffered.send <- data
+						buffered.read <- data
 						waiting = false
 					} else {
 						buffer = append(buffer, data)
 					}
 				} else {
 					if waitingside {
-						buffered.side <- data
+						buffered.readSide <- data
 						waitingside = false
 					} else {
 						buffer = append(bufferside, data)
@@ -100,14 +100,14 @@ func NewBufferredChannel(conn *SignedConnection) *BufferedChannel {
 				if len(buffer) == 0 {
 					waiting = true
 				} else {
-					buffered.send <- buffer[0]
+					buffered.read <- buffer[0]
 					buffer = buffer[1:]
 				}
 			case <-buffered.nextside:
 				if len(bufferside) == 0 {
 					waitingside = true
 				} else {
-					buffered.side <- bufferside[0]
+					buffered.readSide <- bufferside[0]
 					bufferside = bufferside[1:]
 				}
 			case count := <-buffered.count:
