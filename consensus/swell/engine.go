@@ -150,7 +150,7 @@ func ListenToBlock(leader *socket.BufferedChannel, others []*socket.BufferedChan
 			case chain.MsgSealBlock:
 				epoch, position := util.ParseUint64(data, 1)
 				if block == nil || epoch != block.Header.Epoch {
-					slog.Info("ListenToBlock: invalid epoch on seal")
+					slog.Info("ListenToBlock: invalid ep1och on seal")
 					return
 				}
 				seal := chain.ParseBlockSeal(data[position:])
