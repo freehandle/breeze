@@ -30,19 +30,6 @@ import (
 	"github.com/freehandle/breeze/protocol/state"
 )
 
-const KeepLastNBlocks = 100
-
-type Checksum struct {
-	Epoch uint64
-	State *state.State
-	Hash  crypto.Hash
-}
-
-type ClockSyncronization struct {
-	Epoch     uint64
-	TimeStamp time.Time
-}
-
 // Chain is a non-disputed block interface... one block proposed for each
 // epoch, every block is sealed before the proposal of a new block.
 // Final commit of blocks can be delayed and the chain might be asked to

@@ -2,178 +2,92 @@ package socket
 
 import (
 	"fmt"
-	"log/slog"
 
 	"github.com/freehandle/breeze/crypto"
 )
 
-// BufferedChannel buffers read data from a connection
-type BufferedChannel struct {
-	Conn      *SignedConnection
-	Live      bool
-	next      chan struct{}
-	nextside  chan struct{}
-	count     chan chan int
-	countside chan chan int
-	read      chan []byte
-	readSide  chan []byte
-}
+// PercolationRule defines a rule for diffusion of block data among validators.
+// At a given epoch a node will be required to broadcast data to a subsect of
+// other nodes.
+type PercolationRule func(epoch uint64) []int
 
-func (b *BufferedChannel) Is(token crypto.Token) bool {
-	return b.Conn.Token.Equal(token)
-}
-
-func (b *BufferedChannel) Read() []byte {
-	b.next <- struct{}{}
-	data, ok := <-b.read
-	if !ok {
-		close(b.next)
-	}
-	return data
-}
-
-func (b *BufferedChannel) ReadSide() []byte {
-	b.nextside <- struct{}{}
-	data, ok := <-b.readSide
-	if !ok {
-		close(b.nextside)
-	}
-	return data
-}
-
-func (b *BufferedChannel) Len() int {
-	c := make(chan int)
-	b.count <- c
-	return <-c
-}
-
-func (b *BufferedChannel) Send(data []byte) {
-	b.Conn.Send(append([]byte{0}, data...))
-}
-
-func (b *BufferedChannel) SendSide(data []byte) {
-	b.Conn.Send(append([]byte{1}, data...))
-}
-
-func NewBufferredChannel(conn *SignedConnection) *BufferedChannel {
-	buffered := &BufferedChannel{
-		Conn:      conn,
-		next:      make(chan struct{}),
-		count:     make(chan chan int),
-		read:      make(chan []byte),
-		nextside:  make(chan struct{}),
-		countside: make(chan chan int),
-		readSide:  make(chan []byte),
-	}
-
-	queue := make(chan []byte, 2)
-
-	go func() {
-		buffer := make([][]byte, 0)
-		bufferside := make([][]byte, 0)
-		waiting := false
-		waitingside := false
-		for {
-			select {
-			case data := <-queue:
-				if len(data) == 0 {
-					close(buffered.read)
-					close(queue)
-					return
-				}
-				if data[0] == 0 {
-					if waiting {
-						buffered.read <- data
-						waiting = false
-					} else {
-						buffer = append(buffer, data)
-					}
-				} else {
-					if waitingside {
-						buffered.readSide <- data
-						waitingside = false
-					} else {
-						buffer = append(bufferside, data)
+func MergeRules(r ...PercolationRule) PercolationRule {
+	return func(epoch uint64) []int {
+		nodes := make([]int, 0)
+		for _, rule := range r {
+			nodesRule := rule(epoch)
+			for _, node := range nodesRule {
+				isNew := true
+				for _, existing := range nodes {
+					if existing == node {
+						isNew = false
+						break
 					}
 				}
-			case <-buffered.next:
-				if len(buffer) == 0 {
-					waiting = true
-				} else {
-					buffered.read <- buffer[0]
-					buffer = buffer[1:]
+				if isNew {
+					nodes = append(nodes, node)
 				}
-			case <-buffered.nextside:
-				if len(bufferside) == 0 {
-					waitingside = true
-				} else {
-					buffered.readSide <- bufferside[0]
-					bufferside = bufferside[1:]
-				}
-			case count := <-buffered.count:
-				count <- len(buffer)
-			case count := <-buffered.countside:
-				count <- len(bufferside)
 			}
 		}
-	}()
-
-	go func() {
-		for {
-			data, err := conn.Read()
-			if err != nil {
-				slog.Info("buffered channel: could not read data", "error", err)
-				buffered.Live = false
-				queue <- nil
-
-			}
-			queue <- data
-		}
-	}()
-	return buffered
-}
-
-type BroadcastPool struct {
-	members []*BufferedChannel
-	leader  int
-}
-
-func (b *BroadcastPool) NewLeader(token crypto.Token) *BufferedChannel {
-	for n, member := range b.members {
-		if member.Is(token) {
-			b.leader = n
-			return member
-		}
-	}
-	return nil
-}
-
-func (b *BroadcastPool) CountShift(shift int) int {
-	node := (b.leader + shift) % len(b.members)
-	return b.members[node].Len()
-}
-
-func (b *BroadcastPool) Send(data []byte) {
-	for _, member := range b.members {
-		member.Conn.Send(data)
+		return nodes
 	}
 }
 
-func AssembleBroadcastPool(peers []CommitteeMember, credentials crypto.PrivateKey, port int, existing *BroadcastPool) *BroadcastPool {
-	for n, peer := range peers {
-		peers[n] = CommitteeMember{
-			Address: fmt.Sprintf("%v:%v", peer.Address, port),
-			Token:   peer.Token,
+type PercolationPool struct {
+	connections []*BufferedChannel
+	rule        PercolationRule
+}
+
+func (p *PercolationPool) GetLeader(token crypto.Token) (*BufferedChannel, []*BufferedChannel) {
+	for n, connection := range p.connections {
+		if connection.Conn.Token.Equal(token) {
+			return connection, append(p.connections[:n], p.connections[n+1:]...)
+		}
+	}
+	return nil, nil
+}
+
+func (b *PercolationPool) Send(epoch uint64, data []byte) {
+	nodes := b.rule(epoch)
+	for _, node := range nodes {
+		if b.connections[node] != nil {
+			b.connections[node].Send(data)
+		}
+	}
+}
+
+// AssemblePercolationPool creates a pool of connections to other nodes in the
+// peer group. It uses live connection over an existing pool if provided.
+func AssemblePercolationPool(peers []CommitteeMember, credentials crypto.PrivateKey, port int, rule PercolationRule, existing *PercolationPool) *PercolationPool {
+	token := credentials.PublicKey()
+	pool := PercolationPool{
+		connections: make([]*BufferedChannel, len(peers)),
+		rule:        rule,
+	}
+	members := make([]CommitteeMember, 0)
+	for _, peer := range peers {
+		if !peer.Token.Equal(token) {
+			members = append(members, CommitteeMember{
+				Address: fmt.Sprintf("%v:%v", peer.Address, port),
+				Token:   peer.Token,
+			})
 		}
 	}
 	connected := make([]*BufferedChannel, 0)
 	if existing != nil {
-		connected = existing.members
+		connected = existing.connections
 	}
-	committee := AssembleCommittee[*BufferedChannel](peers, connected, NewBufferredChannel, credentials, port)
-	members := <-committee
-	return &BroadcastPool{
-		members: members,
-		leader:  0,
+	committee := AssembleCommittee[*BufferedChannel](members, connected, NewBufferredChannel, credentials, port)
+	connections := <-committee
+	for n, member := range peers {
+		if !member.Token.Equal(token) {
+			for _, c := range connections {
+				if c.Conn.Token.Equal(member.Token) {
+					pool.connections[n] = c
+					break
+				}
+			}
+		}
 	}
+	return &pool
 }

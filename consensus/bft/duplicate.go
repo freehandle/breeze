@@ -1,4 +1,4 @@
-package swell
+package bft
 
 import (
 	"log/slog"

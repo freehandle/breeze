@@ -86,17 +86,35 @@ func (b *MutatingState) CanWithdraw(hash crypto.Hash, value uint64) bool {
 func (b *MutatingState) Deposit(hash crypto.Hash, value uint64) {
 	if old, ok := b.mutations.DeltaDeposits[hash]; ok {
 		b.mutations.DeltaDeposits[hash] = old + int(value)
-		return
+	} else {
+		b.mutations.DeltaDeposits[hash] = int(value)
 	}
-	b.mutations.DeltaDeposits[hash] = int(value)
+	if balance, ok := b.mutations.DeltaWallets[hash]; ok {
+		b.mutations.DeltaWallets[hash] = balance - int(value)
+	} else {
+		b.mutations.DeltaWallets[hash] = -int(value)
+	}
 }
 
 func (b *MutatingState) Withdraw(hash crypto.Hash, value uint64) {
 	if old, ok := b.mutations.DeltaDeposits[hash]; ok {
 		b.mutations.DeltaDeposits[hash] = old - int(value)
-		return
+	} else {
+		b.mutations.DeltaDeposits[hash] = -int(value)
 	}
-	b.mutations.DeltaDeposits[hash] = -int(value)
+	if balance, ok := b.mutations.DeltaWallets[hash]; ok {
+		b.mutations.DeltaWallets[hash] = balance + int(value)
+	} else {
+		b.mutations.DeltaWallets[hash] = int(value)
+	}
+}
+
+func (b *MutatingState) Burn(hash crypto.Hash, value uint64) {
+	if old, ok := b.mutations.DeltaDeposits[hash]; ok {
+		b.mutations.DeltaDeposits[hash] = old - int(value)
+	} else {
+		b.mutations.DeltaDeposits[hash] = -int(value)
+	}
 }
 
 func (b *MutatingState) TransferPayments(payments *actions.Payment) {

@@ -154,6 +154,10 @@ type Gossip struct {
 	hashes  map[crypto.Hash]struct{}
 }
 
+func (g *Gossip) Messages() chan GossipMessage {
+	return g.Signal
+}
+
 func (g *Gossip) Release() {
 	for _, conn := range g.members {
 		conn.release <- g.epoch

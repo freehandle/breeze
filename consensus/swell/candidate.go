@@ -5,6 +5,8 @@ import (
 	"github.com/freehandle/breeze/util"
 )
 
+const CandidateMsg byte = 200
+
 type ValidatorCandidate struct {
 	Epoch     uint64
 	Token     crypto.Token

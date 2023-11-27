@@ -44,7 +44,17 @@ type ChecksumWindowValidatorPool struct {
 	order       []crypto.Token
 	weights     map[crypto.Token]int
 	consensus   []*socket.ChannelConnection
-	blocks      []*socket.BufferedChannel
+	blocks      *socket.PercolationPool
+}
+
+func BroadcastPercolationRule(nodecount int) socket.PercolationRule {
+	return func(epoch uint64) []int {
+		nodes := make([]int, 0)
+		for i := 0; i < nodecount; i++ {
+			nodes = append(nodes, i)
+		}
+		return nodes
+	}
 }
 
 func LaunchValidatorPool(validators []Validator, credentials crypto.PrivateKey, seed []byte) *ChecksumWindowValidatorPool {
@@ -92,6 +102,6 @@ func (v *ChecksumWindowValidatorPool) PrepareNext(validators []Validator, seed [
 	}
 
 	pool.consensus = socket.AssembleChannelNetwork(peers, v.credentials, 5401, v.consensus)
-	pool.blocks = socket.AssembleBroadcastPool(peers, v.credentials, 5400, v.blocks)
+	pool.blocks = socket.AssemblePercolationPool(peers, v.credentials, 5400, BroadcastPercolationRule(len(peers)), v.blocks)
 	return pool
 }

@@ -2,7 +2,7 @@ package chain
 
 import "time"
 
-func (c *Chain) MarkCheckpoint(done chan bool) {
+func (c *Blockchain) MarkCheckpoint(done chan bool) {
 	c.mu.Lock()
 	c.Cloning = true
 	go func() {

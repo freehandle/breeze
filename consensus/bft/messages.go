@@ -1,4 +1,4 @@
-package swell
+package bft
 
 import (
 	"github.com/freehandle/breeze/crypto"
@@ -83,6 +83,7 @@ func ParseRoundPropose(bytes []byte) *RoundPropose {
 	position := 1
 	vote := RoundPropose{}
 	vote.Epoch, position = util.ParseUint64(bytes, position)
+	vote.Round, position = util.ParseByte(bytes, position)
 	vote.Token, position = util.ParseToken(bytes, position)
 	vote.Value, position = util.ParseHash(bytes, position)
 	vote.LastRound, position = util.ParseByte(bytes, position)
@@ -143,6 +144,7 @@ func ParseRoundVote(bytes []byte) *RoundVote {
 	position := 1
 	vote := RoundVote{}
 	vote.Epoch, position = util.ParseUint64(bytes, position)
+	vote.Round, position = util.ParseByte(bytes, position)
 	vote.Blank, position = util.ParseBool(bytes, position)
 	vote.Token, position = util.ParseToken(bytes, position)
 	vote.Value, position = util.ParseHash(bytes, position)
@@ -237,157 +239,4 @@ func (r *RoundCommit) Serialize() []byte {
 
 func (r *RoundCommit) Sign(key crypto.PrivateKey) {
 	r.Signatute = key.Sign(r.serializeToSign())
-}
-
-type Ballot struct {
-	Round    byte
-	Proposal *RoundPropose
-	Votes    []*RoundVote
-	Commits  []*RoundCommit
-}
-
-func (b *Ballot) VoteWeight(value crypto.Hash) int {
-	weight := 0
-	for _, vote := range b.Votes {
-		if (!vote.Blank) && vote.Value.Equal(value) {
-			weight += vote.Weight
-		}
-	}
-	return weight
-}
-
-func (b *Ballot) Weight() int {
-	weight := 0
-	for _, vote := range b.Votes {
-		weight += vote.Weight
-	}
-	for _, commit := range b.Commits {
-		exists := false
-		for _, vote := range b.Votes {
-			if commit.Token.Equal(vote.Token) {
-				exists = true
-				break
-			}
-		}
-		if !exists {
-			weight += commit.Weight
-		}
-	}
-	return weight
-}
-
-func NewBallot(round byte) *Ballot {
-	return &Ballot{
-		Round:   round,
-		Votes:   make([]*RoundVote, 0),
-		Commits: make([]*RoundCommit, 0),
-	}
-}
-
-func (b *Ballot) IncoporateVote(vote *RoundVote) (*RoundVote, int) {
-	weight := 0
-	b.Votes = append(b.Votes, vote)
-	for _, cast := range b.Votes {
-		if (!cast.Blank) && cast.Value.Equal(vote.Value) {
-			weight += cast.Weight
-		}
-		if cast.Token.Equal(vote.Token) {
-			if cast.Value.Equal(vote.Value) || cast.HasHash != vote.HasHash || cast.Blank != vote.Blank {
-				cast.Weight = 0
-				vote.Weight = 0
-				return cast, 0
-			}
-		}
-	}
-	return nil, weight
-}
-
-func (b *Ballot) IncoporateCommit(commit *RoundCommit) (*RoundCommit, int) {
-	weight := 0
-	b.Commits = append(b.Commits, commit)
-	for _, cast := range b.Commits {
-		if (!cast.Blank) && cast.Value.Equal(commit.Value) {
-			weight += cast.Weight
-		}
-		if cast.Token.Equal(commit.Token) {
-			if cast.Value.Equal(commit.Value) {
-				cast.Weight = 0
-				commit.Weight = 0
-				return cast, 0
-			}
-		}
-	}
-	return nil, weight
-}
-func (b *Ballot) HasConsensus() bool {
-	if b.Proposal == nil {
-		return false
-	}
-	weight := 0
-	for _, vote := range b.Votes {
-		if (!vote.Blank) && vote.Value.Equal(b.Proposal.Value) {
-			weight += vote.Weight
-		}
-
-	}
-	return (weight >= 2*F+1)
-}
-
-func (b *Ballot) HasMajorityForValue(hash crypto.Hash) bool {
-	weight := 0
-	for _, vote := range b.Votes {
-		if (!vote.Blank) && vote.Value.Equal(b.Proposal.Value) {
-			weight += vote.Weight
-		}
-
-	}
-	return (weight >= 2*F+1)
-}
-
-func (b *Ballot) HasBlankConsensus() bool {
-	weight := 0
-	for _, vote := range b.Votes {
-		if vote.Blank {
-			weight += vote.Weight
-		}
-
-	}
-	return (weight >= 2*F+1)
-}
-
-func (b *Ballot) HasQuorum() bool {
-	weight := 0
-	for _, vote := range b.Votes {
-		weight += vote.Weight
-	}
-	return (weight >= 2*F+1)
-}
-
-func (b *Ballot) HasCommitQuorum() bool {
-	weight := 0
-	for _, commit := range b.Commits {
-		weight += commit.Weight
-	}
-	return (weight >= 2*F+1)
-}
-
-func (b *Ballot) Finalized() (crypto.Hash, bool) {
-	weights := make(map[crypto.Hash]int)
-	for _, commit := range b.Commits {
-		if !commit.Blank {
-			if weight, ok := weights[commit.Value]; ok {
-				weight += commit.Weight
-				if weight >= 2*F+1 {
-					return commit.Value, true
-				}
-				weights[commit.Value] = weight
-			} else {
-				if commit.Weight >= 2*F+1 {
-					return commit.Value, true
-				}
-				weights[commit.Value] = commit.Weight
-			}
-		}
-	}
-	return crypto.ZeroHash, false
 }

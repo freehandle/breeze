@@ -10,6 +10,19 @@ import (
 	"github.com/freehandle/breeze/protocol/state"
 )
 
+const KeepLastNBlocks = 100
+
+type Checksum struct {
+	Epoch uint64
+	State *state.State
+	Hash  crypto.Hash
+}
+
+type ClockSyncronization struct {
+	Epoch     uint64
+	TimeStamp time.Time
+}
+
 type Blockchain struct {
 	mu              sync.Mutex
 	NetworkHash     crypto.Hash
@@ -22,9 +35,10 @@ type Blockchain struct {
 	Cloning         bool
 	Checksum        *Checksum
 	Clock           ClockSyncronization
+	Punishment      map[crypto.Token]uint64
 }
 
-func BLockchainFromGenesisState(credentials crypto.PrivateKey, walletPath string) *Blockchain {
+func BlockchainFromGenesisState(credentials crypto.PrivateKey, walletPath string) *Blockchain {
 	genesis := state.NewGenesisStateWithToken(credentials.PublicKey(), walletPath)
 	if genesis == nil {
 		return nil

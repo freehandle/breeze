@@ -1,6 +1,6 @@
-# Swell
+# Swell Bizantine Fault Tolerate Alogorithm
 
-Swell is a slight variant of tendermint consensus algorithm, designed to reduce latency and improve trouhghput of the network.
+Swell BFT is a slight variant of tendermint consensus algorithm, designed to reduce latency and improve trouhghput of the network.
 Contrary to tendermint, consensus committee for diferent epochs (heights in tendermint nomenclature) are independent. A consensus for block of a given epoch can be achieved before the consensus for a block of a prior epoch. 
 
 Blocks are proposed against a given checkpoint epoch, for which state the incorporated actions are validated. The formation of the blockchain and the-revalidation of each action against the state of the previous block is done independently by each node. 

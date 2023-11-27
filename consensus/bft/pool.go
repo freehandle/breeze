@@ -1,10 +1,9 @@
-package swell
+package bft
 
 import (
 	"time"
 
 	"github.com/freehandle/breeze/crypto"
-	"github.com/freehandle/breeze/socket"
 )
 
 const (
@@ -39,9 +38,17 @@ type PoolingMembers struct {
 
 type PoolingCommittee struct {
 	Epoch   uint64
-	members map[crypto.Token]PoolingMembers
-	gossip  *socket.Gossip
-	order   []crypto.Token
+	Members map[crypto.Token]PoolingMembers
+	Gossip  GossipNetwork
+	Order   []crypto.Token
+}
+
+func (p PoolingCommittee) TotalWeight() int {
+	total := 0
+	for _, member := range p.Members {
+		total += member.Weight
+	}
+	return total
 }
 
 type Pooling struct {
@@ -62,79 +69,8 @@ type Pooling struct {
 	shutdown       chan struct{}
 }
 
-func LaunchPooling(committee PoolingCommittee, credentials crypto.PrivateKey) *Pooling {
-	pooling := &Pooling{
-		committee:   committee,
-		credentials: credentials,
-		Finalize:    make(chan *ConsensusCommit),
-		rounds:      make([]*Ballot, 0),
-		duplicates:  NewDuplicate(),
-		shutdown:    make(chan struct{}),
-	}
-	messages := committee.gossip.Signal
-	go func() {
-		pooling.NewRound(0)
-		for {
-			select {
-			case <-pooling.shutdown:
-				return
-			case msg := <-messages:
-				if len(msg.Signal) == 0 {
-					continue
-				}
-				switch msg.Signal[0] {
-				case RoundProposeMsg:
-					propose := ParseRoundPropose(msg.Signal)
-					if propose == nil {
-						continue
-					}
-					committee.gossip.BroadcastExcept(msg.Signal, msg.Token)
-					if pooling.isLeader(msg.Token, propose.Round) {
-						round := pooling.getRound(propose.Round)
-						if round.Proposal == nil {
-							round.Proposal = propose
-							pooling.Check()
-						} else {
-							pooling.duplicates.AddProposal(round.Proposal, propose)
-						}
-					}
-				case RoundVoteMsg:
-					vote := ParseRoundVote(msg.Signal)
-					if vote == nil {
-						continue
-					}
-					committee.gossip.BroadcastExcept(msg.Signal, msg.Token)
-					round := pooling.getRound(vote.Round)
-					another, _ := round.IncoporateVote(vote)
-					if another != nil {
-						pooling.duplicates.AddVote(another, vote)
-					} else {
-						pooling.Check()
-					}
-				case RoundCommitMsg:
-					commit := ParseRoundCommit(msg.Signal)
-					if commit == nil {
-						continue
-					}
-					committee.gossip.BroadcastExcept(msg.Signal, msg.Token)
-					round := pooling.getRound(commit.Round)
-					another, _ := round.IncoporateCommit(commit)
-					if another != nil {
-						pooling.duplicates.AddCommit(another, commit)
-					} else {
-						pooling.Check()
-					}
-				case DoneMsg:
-					committee.gossip.ReleaseToken(msg.Token)
-				}
-			}
-		}
-	}()
-	return pooling
-}
-
 func (p *Pooling) isLeader(token crypto.Token, round byte) bool {
-	return p.committee.order[int(round)%len(p.committee.order)].Equal(token)
+	return p.committee.Order[int(round)%len(p.committee.Order)].Equal(token)
 }
 
 func (p *Pooling) getRound(r byte) *Ballot {
@@ -142,15 +78,15 @@ func (p *Pooling) getRound(r byte) *Ballot {
 		return p.rounds[r]
 	}
 	for round := len(p.rounds); round <= int(r); round++ {
-		p.rounds = append(p.rounds, NewBallot(byte(round)))
+		p.rounds = append(p.rounds, NewBallot(byte(round), p.committee.TotalWeight()))
 	}
 	return p.rounds[r]
 }
 
 func (p *Pooling) SealBlock(hash crypto.Hash) {
 	p.blockSeal = hash
-	if p.committee.order[0].Equal(p.credentials.PublicKey()) {
-		if p.committee.order[0].Equal(p.credentials.PublicKey()) {
+	if p.committee.Order[0].Equal(p.credentials.PublicKey()) {
+		if p.committee.Order[0].Equal(p.credentials.PublicKey()) {
 			if p.round == 0 && p.state == Proposing {
 				p.CastPropose()
 				p.state = Voting
@@ -164,10 +100,10 @@ func (p *Pooling) NewRound(r byte) {
 	p.state = Proposing
 	if p.round > byte(len(p.rounds)) {
 		for r := len(p.rounds); r <= int(r); r++ {
-			p.rounds = append(p.rounds, NewBallot(byte(r)))
+			p.rounds = append(p.rounds, NewBallot(byte(r), p.committee.TotalWeight()))
 		}
 	}
-	leader := p.committee.order[int(p.round)%len(p.committee.order)]
+	leader := p.committee.Order[int(p.round)%len(p.committee.Order)]
 	if leader.Equal(p.credentials.PublicKey()) && !p.blockSeal.Equal(crypto.ZeroHash) {
 		p.CastPropose()
 		p.state = Voting
@@ -418,10 +354,10 @@ func (p *Pooling) CastPropose() {
 }
 
 func (p *Pooling) weight(token crypto.Token) int {
-	member := p.committee.members[token]
+	member := p.committee.Members[token]
 	return member.Weight
 }
 
 func (p *Pooling) Broadcast(msg []byte) {
-	p.committee.gossip.Broadcast(msg)
+	p.committee.Gossip.Broadcast(msg)
 }

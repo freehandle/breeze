@@ -26,6 +26,8 @@ const (
 	MsgProtocolCommitBlock             // Sub-Protocol Commit Block Message
 	MsgProtocolFullBlock               // Sub-Protocol Full Block Message
 	MsgRequestBlock                    // Request a block
+	MsgSyncStateWallets
+	MsgSyncStateDeposits
 )
 
 func BlockMessage(block []byte) []byte {

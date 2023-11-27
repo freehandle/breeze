@@ -22,6 +22,16 @@ func (a acceptAll) ValidateConnection(token crypto.Token) chan bool {
 	return response
 }
 
+type ValidateSingleConnection crypto.Token
+
+func (v ValidateSingleConnection) ValidateConnection(token crypto.Token) chan bool {
+	response := make(chan bool)
+	go func() {
+		response <- token.Equal(crypto.Token(v))
+	}()
+	return response
+}
+
 // An implementation with ValidateConnection interface that accepts all reequested
 // connections.
 var AcceptAllConnections = acceptAll{}
