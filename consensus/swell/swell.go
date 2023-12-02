@@ -5,20 +5,26 @@ import (
 	"log/slog"
 
 	"github.com/freehandle/breeze/consensus/chain"
+	"github.com/freehandle/breeze/consensus/relay"
 	"github.com/freehandle/breeze/consensus/store"
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/socket"
 )
 
+type ChecksumWindowValidators struct {
+	order   []crypto.Token
+	weights map[crypto.Token]int
+}
+
 type SwellNode struct {
-	clockEpoch  uint64
-	validators  Validators
+	clockEpoch  uint64                    // current epoch according to node internal clock
+	validators  *ChecksumWindowValidators // valdiators for the current cheksum window
 	credentials crypto.PrivateKey
 	blockchain  *chain.Blockchain
 	actions     *store.ActionStore
 	config      SwellNetworkConfiguration
-	validating  []uint64 // windows
-	isIdle      bool
+	active      chan chan error
+	relay       *relay.Node
 }
 
 func (s *SwellNode) AddSealedBlock(sealed *chain.SealedBlock) {
@@ -56,9 +62,11 @@ func (s *SwellNode) RunNonValidatingNode(ctx context.Context, conn *socket.Signe
 		finished := false
 		dressed := make(map[crypto.Token]*chain.ChecksumStatement)
 		naked := make(map[crypto.Token]*chain.ChecksumStatement)
-
+		var activateResponse chan error
 		for {
 			select {
+			case activateResponse = <-s.active:
+				candidate = true
 			case <-cancel:
 				conn.Shutdown()
 				if hasRequestedChecksum && !hasChecksum {
@@ -104,11 +112,14 @@ func (s *SwellNode) RunNonValidatingNode(ctx context.Context, conn *socket.Signe
 					} else if s.blockchain.LastCommitEpoch == nextWindowEpoch {
 						if candidate {
 							// ValidatorNode wiill be responsible for this window
+							if activateResponse != nil {
+								activateResponse <- nil
+							}
 							finished = true
 							cancelFunc()
 						}
 					} else if s.blockchain.LastCommitEpoch == nextStatementEpoch {
-						tokens := GetConsensusTokens(naked, dressed, s.committee.weights, s.blockchain.LastCommitEpoch)
+						tokens := GetConsensusTokens(naked, dressed, s.validators.weights, s.blockchain.LastCommitEpoch)
 						if len(tokens) > 0 {
 							committee := s.config.Permission.DeterminePool(s.blockchain, tokens)
 							for _, member := range committee {
@@ -116,19 +127,25 @@ func (s *SwellNode) RunNonValidatingNode(ctx context.Context, conn *socket.Signe
 									member.Address = statement.Address
 								}
 							}
-							JoinCandidateNode(ctx, node, committee, []byte{}, int(nextWindowEpoch))
+							s.JoinCandidateNode(ctx, committee, []byte{}, int(nextWindowEpoch))
 						} else {
 							slog.Warn("RunCandidateNode: could not find consensus committee")
-							validator <- nil
-							return
 						}
 					}
 				}
 			}
 		}
-
 	}()
 
+}
+
+func (s *SwellNode) JoinCandidateNode(ctx context.Context, validators Validators, seed []byte, window int) {
+	committee := LaunchValidatorPool(validators, s.credentials, seed)
+	if committee == nil {
+		slog.Warn("JoinCandidateNode: could not launch validator pool")
+		return
+	}
+	s.RunValidatingNode(ctx, committee, window)
 }
 
 func ReadMessages(cancel context.CancelFunc, conn *socket.SignedConnection) chan *chain.SealedBlock {

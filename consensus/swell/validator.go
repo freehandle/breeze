@@ -3,69 +3,19 @@ package swell
 import (
 	"context"
 	"log/slog"
-	"sync"
 	"time"
 
 	"github.com/freehandle/breeze/consensus/bft"
 	"github.com/freehandle/breeze/consensus/chain"
-	"github.com/freehandle/breeze/consensus/relay"
-	"github.com/freehandle/breeze/consensus/store"
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/socket"
 	"github.com/freehandle/breeze/util"
 )
 
-type SwellNetworkConfiguration struct {
-	NetworkHash      crypto.Hash
-	MaxPoolSize      int
-	MaxCommitteeSize int
-	BlockInterval    time.Duration
-	ChecksumWindow   int
-	Permission       Permission
-}
-
-const (
-	MaxPoolSize      = 10
-	MaxCommitteeSize = 100
-)
-
-type Permission interface {
-	Punish(duplicates *bft.Duplicate, weights map[crypto.Token]int) map[crypto.Token]uint64
-	DeterminePool(chain *chain.Blockchain, candidates []crypto.Token) Validators
-}
-
-type BlockConsensusConfirmation struct {
-	Epoch  uint64
-	Status bool
-}
-
-type ValidatingNode struct {
-	//genesisTime  time.Time
-	window      uint64            // epoch starting current checksum window
-	blockchain  *chain.Blockchain // nodes of distinct windows can have this pointer concurrently
-	actions     *store.ActionStore
-	credentials crypto.PrivateKey
-	committee   *ChecksumWindowValidatorPool
-	swellConfig SwellNetworkConfiguration
-	relay       *relay.Node
-}
-
-func (c *ValidatingNode) IsPoolMember(epoch uint64) bool {
-	token := c.credentials.PublicKey()
-	leader := int(epoch-c.window) % len(c.committee.order)
-	for n := 0; n < c.swellConfig.MaxCommitteeSize; n++ {
-		if token.Equal(c.committee.order[(leader+n)%len(c.committee.order)]) {
-			return true
-		}
-	}
-	return false
-}
-
-func RunValidatorNode(ctx context.Context, node *ValidatingNode, window int) {
-	windowStartEpoch := uint64(window*node.swellConfig.ChecksumWindow + 1)
+func (node *SwellNode) RunValidatingNode(ctx context.Context, committee *ChecksumWindowValidatorPool, window int) {
+	windowStartEpoch := uint64(window*node.config.ChecksumWindow + 1)
 	epoch := windowStartEpoch
 	waiting := node.blockchain.Timer(epoch)
-
 	mintConfirmation := make(chan BlockConsensusConfirmation)
 
 	go func() {
@@ -74,7 +24,7 @@ func RunValidatorNode(ctx context.Context, node *ValidatingNode, window int) {
 			select {
 			case <-waiting.C:
 				if node.IsPoolMember(epoch) {
-					node.RunEpoch(epoch, mintConfirmation)
+					node.RunEpoch(epoch, committee, mintConfirmation)
 				}
 				epoch += 1
 				waiting = node.blockchain.Timer(epoch)
@@ -130,12 +80,25 @@ func RunValidatorNode(ctx context.Context, node *ValidatingNode, window int) {
 	}()
 }
 
+func (c *SwellNode) IsPoolMember(epoch uint64) bool {
+	token := c.credentials.PublicKey()
+	windowStart := (int(epoch)/c.config.ChecksumWindow)*c.config.ChecksumWindow + 1
+	leader := int(epoch-uint64(windowStart)) % len(c.validators.order)
+	for n := 0; n < c.config.MaxCommitteeSize; n++ {
+		if token.Equal(c.validators.order[(leader+n)%len(c.validators.order)]) {
+			return true
+		}
+	}
+	return false
+}
+
 // Node keeps forming blocks either proposing its own blocks or validating
 // others nodes proposals. In due time node re-arranges validator pool.
 // Uppon exclusion a node can transition to a listener node.
-func (n *ValidatingNode) RunEpoch(epoch uint64, done chan BlockConsensusConfirmation) {
-	leaderCount := int(epoch-n.window) % len(n.committee.order)
-	leaderToken := n.committee.order[leaderCount]
+func (node *SwellNode) RunEpoch(epoch uint64, network *ChecksumWindowValidatorPool, done chan BlockConsensusConfirmation) {
+	windowStart := (int(epoch)/node.config.ChecksumWindow)*node.config.ChecksumWindow + 1
+	leaderCount := (int(epoch) - windowStart) % len(node.validators.order)
+	leaderToken := node.validators.order[leaderCount]
 	committee := &bft.PoolingCommittee{
 		Epoch:   epoch,
 		Members: make(map[crypto.Token]bft.PoolingMembers),
@@ -143,8 +106,8 @@ func (n *ValidatingNode) RunEpoch(epoch uint64, done chan BlockConsensusConfirma
 	}
 	peers := make([]socket.CommitteeMember, 0)
 	for i := 0; i < MaxPoolSize; i++ {
-		token := n.committee.order[(leaderCount+i)%len(n.committee.order)]
-		weight := n.committee.weights[token]
+		token := node.validators.order[(leaderCount+i)%len(node.validators.order)]
+		weight := node.validators.weights[token]
 		if weight == 0 {
 			slog.Warn("RunEpoch: zero weight member")
 			continue
@@ -154,86 +117,75 @@ func (n *ValidatingNode) RunEpoch(epoch uint64, done chan BlockConsensusConfirma
 		} else {
 			committee.Members[token] = bft.PoolingMembers{Weight: weight}
 		}
-		for _, v := range n.committee.validators {
+		for _, v := range network.validators {
 			if v.Token.Equal(token) {
 				peers = append(peers, v)
 				break
 			}
 		}
 	}
-	bftConnections := socket.AssembleChannelNetwork(peers, n.credentials, 5401, n.committee.consensus)
+	bftConnections := socket.AssembleChannelNetwork(peers, node.credentials, 5401, network.consensus)
 	committee.Gossip = socket.GroupGossip(epoch, bftConnections)
-	pool := bft.LaunchPooling(*committee, n.credentials)
-	leader := n.committee.order[leaderCount]
+	pool := bft.LaunchPooling(*committee, node.credentials)
+	leader := node.validators.order[leaderCount]
 	go func() {
 		ok := false
-		if leader.Equal(n.credentials.PublicKey()) {
-			ok = BuildBlock(epoch, n.blockchain, n.committee.blocks, n.actions, n.credentials, pool)
+		if leader.Equal(node.credentials.PublicKey()) {
+			ok = node.BuildBlock(epoch, network, pool)
 		} else {
-			leader, others := n.committee.blocks.GetLeader(leaderToken)
+			leader, others := network.blocks.GetLeader(leaderToken)
 			if leader != nil {
-				ok = ListenToBlock(leader, others, pool, n.blockchain)
+				ok = node.ListenToBlock(leader, others, pool)
 			}
 		}
 		done <- BlockConsensusConfirmation{Epoch: epoch, Status: ok}
 	}()
 }
 
-func (n *ValidatingNode) ListenEpoch(epoch uint64, done chan BlockConsensusConfirmation) {
-
-}
-
-type retrievalStatus struct {
-	mu     sync.Mutex
-	done   bool
-	output chan *chain.SealedBlock
-}
-
-func (r *retrievalStatus) Done(sealed *chain.SealedBlock) bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.done {
-		return true
+func (node *SwellNode) BuildBlock(epoch uint64, network *ChecksumWindowValidatorPool, pool *bft.Pooling) bool {
+	timeout := time.NewTimer(980 * time.Millisecond)
+	header := node.blockchain.NextBlock(epoch)
+	if header == nil {
+		return false
 	}
-	if sealed != nil {
-		r.done = true
-		r.output <- sealed
-		return true
-	}
-	return false
-}
-
-func RetrieveBlock(epoch uint64, hash crypto.Hash, order []*socket.BufferedChannel) chan *chain.SealedBlock {
-	output := make(chan *chain.SealedBlock)
-	ellapse := 400 * time.Millisecond
-	msg := chain.RequestBlockMessage(epoch, hash)
-	status := retrievalStatus{
-		mu:     sync.Mutex{},
-		output: output,
-	}
-	for n, channel := range order {
-		go func(n int, channel *socket.BufferedChannel, status *retrievalStatus) {
-			time.Sleep(time.Duration(n) * ellapse)
-			channel.SendSide(msg)
-			data := channel.ReadSide()
-			if len(data) == 0 {
+	block := node.blockchain.CheckpointValidator(*header)
+	msg := chain.NewBlockMessage(*header)
+	network.blocks.Send(epoch, msg)
+	var sealed *chain.SealedBlock
+	go func() {
+		for {
+			select {
+			case action := <-node.actions.Actions:
+				if len(action) > 0 && block.Validate(action) {
+					msg := chain.ActionMessage(action)
+					network.blocks.Send(epoch, msg)
+				}
+			case <-timeout.C:
+				sealed = block.Seal(node.credentials)
+				hash := crypto.ZeroHash
+				if sealed != nil {
+					hash = sealed.Seal.Hash
+					msg := chain.BlockSealMessage(epoch, sealed.Seal)
+					network.blocks.Send(epoch, msg)
+				} else {
+					slog.Warn("BuildBlock: could not seal own block")
+				}
+				pool.SealBlock(hash)
 				return
 			}
-			sealed := chain.ParseSealedBlock(data)
-			if sealed != nil && sealed.Header.Epoch == epoch && sealed.Seal.Hash.Equal(hash) {
-				status.Done(sealed)
-				return
-			}
-		}(n, channel, &status)
+		}
+	}()
+	consensus := <-pool.Finalize
+	if sealed != nil && consensus.Value.Equal(sealed.Seal.Hash) {
+		node.blockchain.AddSealedBlock(sealed)
+		return true
+	} else if consensus.Value.Equal(crypto.ZeroHash) {
+		return false
 	}
-	return output
+	return true
 }
 
-func (v *ValidatingNode) ListeToBroadcastChannel(epoch uint64) {
-
-}
-
-func ListenToBlock(leader *socket.BufferedChannel, others []*socket.BufferedChannel, pool *bft.Pooling, blockchain *chain.Blockchain) bool {
+func (node *SwellNode) ListenToBlock(leader *socket.BufferedChannel, others []*socket.BufferedChannel, pool *bft.Pooling) bool {
 	var sealed *chain.SealedBlock
 	go func() {
 		var block *chain.BlockBuilder
@@ -250,7 +202,7 @@ func ListenToBlock(leader *socket.BufferedChannel, others []*socket.BufferedChan
 					return
 				}
 
-				block = blockchain.CheckpointValidator(*header)
+				block = node.blockchain.CheckpointValidator(*header)
 				if block == nil {
 					slog.Info("ListenToBlock: invalid block header")
 					pool.SealBlock(crypto.ZeroHash)
@@ -303,49 +255,6 @@ func ListenToBlock(leader *socket.BufferedChannel, others []*socket.BufferedChan
 	if sealed == nil {
 		return false
 	}
-	blockchain.AddSealedBlock(sealed)
-	return true
-}
-
-func BuildBlock(epoch uint64, blockchain *chain.Blockchain, broadcast *socket.PercolationPool, actions *store.ActionStore, credentials crypto.PrivateKey, pool *bft.Pooling) bool {
-	timeout := time.NewTimer(980 * time.Millisecond)
-	header := blockchain.NextBlock(epoch)
-	if header == nil {
-		return false
-	}
-	block := blockchain.CheckpointValidator(*header)
-	msg := chain.NewBlockMessage(*header)
-	broadcast.Send(epoch, msg)
-	var sealed *chain.SealedBlock
-	go func() {
-		for {
-			select {
-			case action := <-actions.Actions:
-				if len(action) > 0 && block.Validate(action) {
-					msg := chain.ActionMessage(action)
-					broadcast.Send(epoch, msg)
-				}
-			case <-timeout.C:
-				sealed = block.Seal(credentials)
-				hash := crypto.ZeroHash
-				if sealed != nil {
-					hash = sealed.Seal.Hash
-					msg := chain.BlockSealMessage(epoch, sealed.Seal)
-					broadcast.Send(epoch, msg)
-				} else {
-					slog.Warn("BuildBlock: could not seal own block")
-				}
-				pool.SealBlock(hash)
-				return
-			}
-		}
-	}()
-	consensus := <-pool.Finalize
-	if sealed != nil && consensus.Value.Equal(sealed.Seal.Hash) {
-		blockchain.AddSealedBlock(sealed)
-		return true
-	} else if consensus.Value.Equal(crypto.ZeroHash) {
-		return false
-	}
+	node.blockchain.AddSealedBlock(sealed)
 	return true
 }

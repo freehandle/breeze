@@ -11,11 +11,11 @@ import (
 	"github.com/freehandle/breeze/util"
 )
 
-func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, syncAddress string, syncToken crypto.Token) (chan *ValidatingNode, error) {
+func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, syncAddress string, syncToken crypto.Token) error {
 
 	conn, err := socket.Dial(syncAddress, config.credentials, syncToken)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	bytes := []byte{chain.MsgSyncRequest}
 	util.PutUint64(0, &bytes)
@@ -26,10 +26,10 @@ func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, syncAddr
 
 	msg, err := conn.Read()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if len(msg) < 8 || msg[0] != chain.MsgClockSync {
-		return nil, errors.New("invalid clock sync message")
+		return errors.New("invalid clock sync message")
 	}
 	position := 1
 	clock.Epoch, position = util.ParseUint64(msg, position)
@@ -37,18 +37,17 @@ func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, syncAddr
 
 	checksum, err := syncChecksum(conn, config.walletPath)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	node := &ValidatingNode{
-		window:      checksum.Epoch,
+	node := &SwellNode{
 		blockchain:  chain.BlockchainFromChecksumState(checksum, clock, config.credentials, config.swellConfig.NetworkHash, config.swellConfig.BlockInterval),
 		actions:     config.actions,
 		credentials: config.credentials,
-		swellConfig: config.swellConfig,
+		config:      config.swellConfig,
 	}
-	candidate := RunCandidateNode(ctx, node, conn)
-	return candidate, nil
+	node.RunNonValidatingNode(ctx, conn, true)
+	return nil
 }
 
 func syncChecksum(conn *socket.SignedConnection, walletPath string) (*chain.Checksum, error) {
