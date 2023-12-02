@@ -13,9 +13,10 @@ import (
 const KeepLastNBlocks = 100
 
 type Checksum struct {
-	Epoch uint64
-	State *state.State
-	Hash  crypto.Hash
+	Epoch         uint64
+	State         *state.State
+	LastBlockHash crypto.Hash
+	Hash          crypto.Hash
 }
 
 type ClockSyncronization struct {
@@ -36,16 +37,17 @@ type Blockchain struct {
 	Checksum        *Checksum
 	Clock           ClockSyncronization
 	Punishment      map[crypto.Token]uint64
+	BlockInterval   time.Duration
 }
 
-func BlockchainFromGenesisState(credentials crypto.PrivateKey, walletPath string) *Blockchain {
+func BlockchainFromGenesisState(credentials crypto.PrivateKey, walletPath string, hash crypto.Hash, interval time.Duration) *Blockchain {
 	genesis := state.NewGenesisStateWithToken(credentials.PublicKey(), walletPath)
 	if genesis == nil {
 		return nil
 	}
 	return &Blockchain{
 		mu:              sync.Mutex{},
-		NetworkHash:     crypto.HashToken(credentials.PublicKey()),
+		NetworkHash:     hash,
 		Credentials:     credentials,
 		LastCommitEpoch: 0,
 		LastCommitHash:  crypto.HashToken(credentials.PublicKey()),
@@ -53,23 +55,42 @@ func BlockchainFromGenesisState(credentials crypto.PrivateKey, walletPath string
 		SealedBlocks:    make([]*SealedBlock, 0),
 		RecentBlocks:    make([]*CommitBlock, 0),
 		Checksum: &Checksum{
-			Epoch: 0,
-			State: genesis,
-			Hash:  crypto.HashToken(credentials.PublicKey()),
+			Epoch:         0,
+			State:         genesis,
+			LastBlockHash: crypto.HashToken(credentials.PublicKey()),
+			Hash:          crypto.HashToken(credentials.PublicKey()),
 		},
+		Clock: ClockSyncronization{
+			Epoch:     0,
+			TimeStamp: time.Now(),
+		},
+		BlockInterval: interval,
 	}
 }
 
-func BlockchainFromChecksumState(c *Checksum, credentials crypto.PrivateKey, lastBlockHash crypto.Hash) *Blockchain {
+func (b *Blockchain) TimestampBlock(epoch uint64) time.Time {
+	delta := time.Duration(epoch-b.Clock.Epoch) * b.BlockInterval
+	return b.Clock.TimeStamp.Add(delta)
+}
+
+func (b *Blockchain) Timer(epoch uint64) *time.Timer {
+	delta := time.Until(b.TimestampBlock(epoch))
+	return time.NewTimer(delta)
+}
+
+func BlockchainFromChecksumState(c *Checksum, clock ClockSyncronization, credentials crypto.PrivateKey, networkHash crypto.Hash, interval time.Duration) *Blockchain {
 	return &Blockchain{
 		mu:              sync.Mutex{},
+		NetworkHash:     networkHash,
 		Credentials:     credentials,
 		LastCommitEpoch: c.Epoch,
-		LastCommitHash:  lastBlockHash,
+		LastCommitHash:  c.LastBlockHash,
 		CommitState:     c.State,
 		SealedBlocks:    make([]*SealedBlock, 0),
 		RecentBlocks:    make([]*CommitBlock, 0),
 		Checksum:        c,
+		Clock:           clock,
+		BlockInterval:   interval,
 	}
 }
 

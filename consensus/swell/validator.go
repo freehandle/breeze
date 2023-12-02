@@ -1,17 +1,28 @@
 package swell
 
 import (
+	"context"
 	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/freehandle/breeze/consensus/bft"
 	"github.com/freehandle/breeze/consensus/chain"
+	"github.com/freehandle/breeze/consensus/relay"
 	"github.com/freehandle/breeze/consensus/store"
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/socket"
 	"github.com/freehandle/breeze/util"
 )
+
+type SwellNetworkConfiguration struct {
+	NetworkHash      crypto.Hash
+	MaxPoolSize      int
+	MaxCommitteeSize int
+	BlockInterval    time.Duration
+	ChecksumWindow   int
+	Permission       Permission
+}
 
 const (
 	MaxPoolSize      = 10
@@ -20,7 +31,7 @@ const (
 
 type Permission interface {
 	Punish(duplicates *bft.Duplicate, weights map[crypto.Token]int) map[crypto.Token]uint64
-	DeterminePool(chain *chain.Blockchain, candidates []ValidatorCandidate, epoch uint64) Validators
+	DeterminePool(chain *chain.Blockchain, candidates []crypto.Token) Validators
 }
 
 type BlockConsensusConfirmation struct {
@@ -28,24 +39,103 @@ type BlockConsensusConfirmation struct {
 	Status bool
 }
 
-type Node struct {
-	checkpoint   uint64
-	blockchain   *chain.Blockchain
-	actions      *store.ActionStore
-	credentials  crypto.PrivateKey
-	channel      []*socket.ChannelConnection
-	broadcasting *socket.PercolationPool
-	validators   []socket.CommitteeMember
-	weights      map[crypto.Token]int
-	order        []crypto.Token
+type ValidatingNode struct {
+	//genesisTime  time.Time
+	window      uint64            // epoch starting current checksum window
+	blockchain  *chain.Blockchain // nodes of distinct windows can have this pointer concurrently
+	actions     *store.ActionStore
+	credentials crypto.PrivateKey
+	committee   *ChecksumWindowValidatorPool
+	swellConfig SwellNetworkConfiguration
+	relay       *relay.Node
+}
+
+func (c *ValidatingNode) IsPoolMember(epoch uint64) bool {
+	token := c.credentials.PublicKey()
+	leader := int(epoch-c.window) % len(c.committee.order)
+	for n := 0; n < c.swellConfig.MaxCommitteeSize; n++ {
+		if token.Equal(c.committee.order[(leader+n)%len(c.committee.order)]) {
+			return true
+		}
+	}
+	return false
+}
+
+func RunValidatorNode(ctx context.Context, node *ValidatingNode, window int) {
+	windowStartEpoch := uint64(window*node.swellConfig.ChecksumWindow + 1)
+	epoch := windowStartEpoch
+	waiting := node.blockchain.Timer(epoch)
+
+	mintConfirmation := make(chan BlockConsensusConfirmation)
+
+	go func() {
+		done := ctx.Done()
+		for {
+			select {
+			case <-waiting.C:
+				if node.IsPoolMember(epoch) {
+					node.RunEpoch(epoch, mintConfirmation)
+				}
+				epoch += 1
+				waiting = node.blockchain.Timer(epoch)
+			case <-done:
+				waiting.Stop()
+				return
+			}
+		}
+	}()
+
+	go func() {
+		sealedblocks := make(map[uint64]crypto.Hash, 0)
+		commitblocks := make(map[uint64]crypto.Hash, 0)
+		cancel := ctx.Done()
+		for {
+			select {
+			case syncRequest := <-node.relay.SyncRequest:
+				if syncRequest.State {
+					go node.blockchain.SyncState(syncRequest.Conn)
+				} else {
+					go node.blockchain.SyncBlocksServer(syncRequest.Conn, syncRequest.Epoch)
+				}
+			case consensus := <-mintConfirmation:
+				if consensus.Status {
+					for _, sealed := range node.blockchain.SealedBlocks {
+						if hash, ok := sealedblocks[sealed.Header.Epoch]; !ok {
+							sealedblocks[sealed.Header.Epoch] = sealed.Seal.Hash
+							msg := chain.SealedBlockMessage(sealed)
+							node.relay.BlockEvents <- msg
+						} else if !hash.Equal(sealed.Seal.Hash) {
+							// todo: can this happen?
+						}
+					}
+					for _, commit := range node.blockchain.RecentBlocks {
+						if commit.Header.Epoch >= windowStartEpoch {
+							if hash, ok := commitblocks[commit.Header.Epoch]; !ok {
+								commitblocks[commit.Header.Epoch] = commit.Seal.Hash
+								msg := chain.CommitBlockMessage(commit.Header.Epoch, commit.Commit)
+								node.relay.BlockEvents <- msg
+							} else if !hash.Equal(commit.Seal.Hash) {
+								// todo: can this happen?
+							}
+						}
+					}
+				} else {
+					slog.Warn("validator consensus failed for epoch", "epoch", consensus.Epoch)
+				}
+			case <-cancel:
+				close(mintConfirmation)
+				return
+			}
+		}
+	}()
 }
 
 // Node keeps forming blocks either proposing its own blocks or validating
 // others nodes proposals. In due time node re-arranges validator pool.
 // Uppon exclusion a node can transition to a listener node.
-func (n *Node) RunEpoch(epoch uint64, done chan BlockConsensusConfirmation) {
-	leaderCount := int(epoch-n.checkpoint) % len(n.order)
-	leaderToken := n.order[leaderCount]
+func (n *ValidatingNode) RunEpoch(epoch uint64, done chan BlockConsensusConfirmation) {
+	leaderCount := int(epoch-n.window) % len(n.committee.order)
+	leaderToken := n.committee.order[leaderCount]
 	committee := &bft.PoolingCommittee{
 		Epoch:   epoch,
 		Members: make(map[crypto.Token]bft.PoolingMembers),
@@ -53,8 +143,8 @@ func (n *Node) RunEpoch(epoch uint64, done chan BlockConsensusConfirmation) {
 	}
 	peers := make([]socket.CommitteeMember, 0)
 	for i := 0; i < MaxPoolSize; i++ {
-		token := n.order[(leaderCount+i)%len(n.order)]
-		weight := n.weights[token]
+		token := n.committee.order[(leaderCount+i)%len(n.committee.order)]
+		weight := n.committee.weights[token]
 		if weight == 0 {
 			slog.Warn("RunEpoch: zero weight member")
 			continue
@@ -64,29 +154,33 @@ func (n *Node) RunEpoch(epoch uint64, done chan BlockConsensusConfirmation) {
 		} else {
 			committee.Members[token] = bft.PoolingMembers{Weight: weight}
 		}
-		for _, v := range n.validators {
+		for _, v := range n.committee.validators {
 			if v.Token.Equal(token) {
 				peers = append(peers, v)
 				break
 			}
 		}
 	}
-	connections := socket.AssembleChannelNetwork(peers, n.credentials, 5401, n.channel)
-	committee.Gossip = socket.GroupGossip(epoch, connections)
+	bftConnections := socket.AssembleChannelNetwork(peers, n.credentials, 5401, n.committee.consensus)
+	committee.Gossip = socket.GroupGossip(epoch, bftConnections)
 	pool := bft.LaunchPooling(*committee, n.credentials)
-	leader := n.order[leaderCount]
+	leader := n.committee.order[leaderCount]
 	go func() {
 		ok := false
 		if leader.Equal(n.credentials.PublicKey()) {
-			ok = BuildBlock(epoch, n.blockchain, n.broadcasting, n.actions, n.credentials, pool)
+			ok = BuildBlock(epoch, n.blockchain, n.committee.blocks, n.actions, n.credentials, pool)
 		} else {
-			leader, others := n.broadcasting.GetLeader(leaderToken)
+			leader, others := n.committee.blocks.GetLeader(leaderToken)
 			if leader != nil {
 				ok = ListenToBlock(leader, others, pool, n.blockchain)
 			}
 		}
 		done <- BlockConsensusConfirmation{Epoch: epoch, Status: ok}
 	}()
+}
+
+func (n *ValidatingNode) ListenEpoch(epoch uint64, done chan BlockConsensusConfirmation) {
+
 }
 
 type retrievalStatus struct {
@@ -133,6 +227,10 @@ func RetrieveBlock(epoch uint64, hash crypto.Hash, order []*socket.BufferedChann
 		}(n, channel, &status)
 	}
 	return output
+}
+
+func (v *ValidatingNode) ListeToBroadcastChannel(epoch uint64) {
+
 }
 
 func ListenToBlock(leader *socket.BufferedChannel, others []*socket.BufferedChannel, pool *bft.Pooling, blockchain *chain.Blockchain) bool {

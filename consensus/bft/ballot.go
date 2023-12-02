@@ -2,6 +2,7 @@ package bft
 
 import (
 	"github.com/freehandle/breeze/crypto"
+	"github.com/freehandle/breeze/util"
 )
 
 type Ballot struct {
@@ -10,6 +11,72 @@ type Ballot struct {
 	Proposal    *RoundPropose
 	Votes       []*RoundVote
 	Commits     []*RoundCommit
+}
+
+func PutBallot(b *Ballot, data *[]byte) {
+	*data = append(*data, b.Serialize()...)
+}
+
+func (b *Ballot) Serialize() []byte {
+	bytes := util.Uint64ToBytes(uint64(b.TotalWeight))
+	util.PutUint64(uint64(b.TotalWeight), &bytes)
+	if b.Proposal != nil {
+		util.PutByteArray([]byte{}, &bytes)
+	} else {
+		util.PutByteArray(b.Proposal.Serialize(), &bytes)
+	}
+	util.PutUint16(uint16(len(b.Votes)), &bytes)
+	for _, vote := range b.Votes {
+		util.PutByteArray(vote.Serialize(), &bytes)
+	}
+	util.PutUint16(uint16(len(b.Votes)), &bytes)
+	for _, commit := range b.Commits {
+		util.PutByteArray(commit.Serialize(), &bytes)
+	}
+	return bytes
+}
+
+func ParseBallot(data []byte) *Ballot {
+	ballot, _ := ParseBallotPosition(data, 0)
+	return ballot
+}
+
+func ParseBallotPosition(data []byte, position int) (*Ballot, int) {
+	var bytes []byte
+	ballot := Ballot{
+		Votes:   make([]*RoundVote, 0),
+		Commits: make([]*RoundCommit, 0),
+	}
+	var totalweight uint64
+	if totalweight, position = util.ParseUint64(data, position); totalweight == 0 {
+		return nil, len(data) + 1
+	}
+	ballot.TotalWeight = int(totalweight)
+	ballot.Round, position = util.ParseByte(data, position)
+	bytes, position = util.ParseByteArray(data, position)
+	if len(bytes) > 0 {
+		ballot.Proposal = ParseRoundPropose(bytes)
+	}
+	var count uint16
+	count, position = util.ParseUint16(data, position)
+	for i := uint16(0); i < count; i++ {
+		bytes, position = util.ParseByteArray(data, position)
+		if vote := ParseRoundVote(bytes); vote != nil {
+			ballot.Votes = append(ballot.Votes, vote)
+		} else {
+			return nil, len(data) + 1
+		}
+	}
+	count, position = util.ParseUint16(data, position)
+	for i := uint16(0); i < count; i++ {
+		bytes, position = util.ParseByteArray(data, position)
+		if commit := ParseRoundCommit(bytes); commit != nil {
+			ballot.Commits = append(ballot.Commits, commit)
+		} else {
+			return nil, len(data) + 1
+		}
+	}
+	return &ballot, position
 }
 
 func NewBallot(round byte, weight int) *Ballot {

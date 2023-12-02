@@ -37,26 +37,26 @@ func NewGenesisState() (*State, crypto.PrivateKey) {
 func NewGenesisStateWithToken(token crypto.Token, filePath string) *State {
 	state := State{Epoch: 0}
 	if filePath == "" {
-		if wallet := NewMemoryWalletStore(0, 8); wallet != nil {
+		if wallet := NewMemoryWalletStore("wallet", 8); wallet != nil {
 			state.Wallets = wallet
 		} else {
 			slog.Error("NewGenesisStateWithToken: could not create memory wallet")
 			return nil
 		}
-		if deposit := NewMemoryWalletStore(0, 8); deposit != nil {
+		if deposit := NewMemoryWalletStore("deposit", 8); deposit != nil {
 			state.Deposits = deposit
 		} else {
 			slog.Error("NewGenesisStateWithToken: could not create memory deposit")
 			return nil
 		}
 	} else {
-		if wallet := NewFileWalletStore(fmt.Sprintf("%vwallet.dat", filePath), 0, 8); wallet != nil {
+		if wallet := NewFileWalletStore(fmt.Sprintf("%vwallet.dat", filePath), "wallet", 8); wallet != nil {
 			state.Wallets = wallet
 		} else {
 			slog.Error("NewGenesisStateWithToken: could not create file wallet")
 			return nil
 		}
-		if deposit := NewFileWalletStore(fmt.Sprintf("%vdeposit.dat", filePath), 0, 8); deposit != nil {
+		if deposit := NewFileWalletStore(fmt.Sprintf("%vdeposit.dat", filePath), "deposit", 8); deposit != nil {
 			state.Deposits = deposit
 		} else {
 			slog.Error("NewGenesisStateWithToken: could not create file deposit")

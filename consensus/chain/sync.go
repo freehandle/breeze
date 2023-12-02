@@ -4,6 +4,7 @@ import (
 	"log/slog"
 
 	"github.com/freehandle/breeze/socket"
+	"github.com/freehandle/breeze/util"
 )
 
 func (c *Blockchain) SyncBlocksServer(conn *socket.CachedConnection, epoch uint64) {
@@ -42,17 +43,32 @@ func (c *Blockchain) SyncBlocksServer(conn *socket.CachedConnection, epoch uint6
 	conn.Ready()
 }
 
-func (c *BlockBuilder) SyncBlocksClient(nodeAddr string) chan bool {
-	status := make(chan bool, 2)
-
-	return status
-}
-
 func (c *Blockchain) SyncState(conn *socket.CachedConnection) {
 	c.mu.Lock()
-	wallet := c.Checksum.State.Wallets.HS.Bytes()
-	deposits := c.Checksum.State.Deposits.HS.Bytes()
+	wallet := c.Checksum.State.Wallets.Bytes()
+	deposits := c.Checksum.State.Deposits.Bytes()
 	c.mu.Unlock()
+
+	clock := []byte{MsgClockSync}
+	util.PutUint64(c.Clock.Epoch, &clock)
+	util.PutTime(c.Clock.TimeStamp, &clock)
+	if err := conn.SendDirect(clock); err != nil {
+		slog.Error("sync state: could not send clock sync", "err", err)
+		conn.Close()
+		return
+	}
+
+	checksum := []byte{MsgSyncChecksum}
+	util.PutUint64(c.Checksum.Epoch, &checksum)
+	util.PutHash(c.Checksum.Hash, &checksum)
+	util.PutHash(c.Checksum.LastBlockHash, &checksum)
+
+	if err := conn.SendDirect(append([]byte{MsgSyncChecksum}, util.Uint64ToBytes(c.Checksum.Epoch)...)); err != nil {
+		slog.Error("sync state: could not send checksum sync", "err", err)
+		conn.Close()
+		return
+	}
+
 	if err := conn.SendDirect(append([]byte{MsgSyncStateWallets}, wallet...)); err != nil {
 		slog.Error("sync state: could not send wallets", "err", err)
 		conn.Close()
@@ -63,4 +79,5 @@ func (c *Blockchain) SyncState(conn *socket.CachedConnection) {
 		conn.Close()
 		return
 	}
+	c.SyncBlocksServer(conn, c.Checksum.Epoch)
 }

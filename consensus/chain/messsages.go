@@ -26,8 +26,12 @@ const (
 	MsgProtocolCommitBlock             // Sub-Protocol Commit Block Message
 	MsgProtocolFullBlock               // Sub-Protocol Full Block Message
 	MsgRequestBlock                    // Request a block
+	MsgClockSync
+	MsgSyncChecksum
 	MsgSyncStateWallets
 	MsgSyncStateDeposits
+	MsgSyncStateEpochAndHash
+	MsgChecksumStatement
 )
 
 func BlockMessage(block []byte) []byte {
@@ -73,4 +77,8 @@ func CommitBlockMessage(epoch uint64, commit *BlockCommit) []byte {
 	bytes := []byte{MsgCommitBlock}
 	util.PutUint64(epoch, &bytes)
 	return append(bytes, commit.Serialize()...)
+}
+
+func SealedBlockMessage(sealed *SealedBlock) []byte {
+	return append([]byte{MsgBlockSealed}, sealed.Serialize()...)
 }

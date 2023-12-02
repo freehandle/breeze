@@ -39,13 +39,13 @@ func (pos *ProofOfStake) Punish(duplicates *bft.Duplicate, weights map[crypto.To
 	return punishments
 }
 
-func (pos *ProofOfStake) DeterminePool(chain *chain.Blockchain, candidates []swell.ValidatorCandidate, epoch uint64) swell.Validators {
+func (pos *ProofOfStake) DeterminePool(chain *chain.Blockchain, candidates []crypto.Token) swell.Validators {
 	validated := make(swell.Validators, 0)
-	for _, candidate := range candidates {
-		_, deposit := chain.Checksum.State.Deposits.Balance(candidate.Token)
+	for _, token := range candidates {
+		_, deposit := chain.Checksum.State.Deposits.Balance(token)
 		if deposit >= pos.MinimumStage {
-			validated = append(validated, swell.Validator{
-				Token:  candidate.Token,
+			validated = append(validated, &swell.Validator{
+				Token:  token,
 				Weight: int(deposit / pos.MinimumStage),
 			})
 		}
@@ -84,13 +84,13 @@ func (poa *ProofOfAuthority) Punish(duplicates *bft.Duplicate, weights map[crypt
 	return punishments
 }
 
-func (poa *ProofOfAuthority) DeterminePool(chain *chain.Blockchain, candidates []swell.ValidatorCandidate, epoch uint64) swell.Validators {
+func (poa *ProofOfAuthority) DeterminePool(chain *chain.Blockchain, candidates []crypto.Token) swell.Validators {
 	validated := make(swell.Validators, 0)
 	for _, candidate := range candidates {
 		for _, token := range poa.Authorized {
-			if candidate.Token.Equal(token) {
-				validated = append(validated, swell.Validator{
-					Token:  candidate.Token,
+			if candidate.Equal(token) {
+				validated = append(validated, &swell.Validator{
+					Token:  token,
 					Weight: 1,
 				})
 			}

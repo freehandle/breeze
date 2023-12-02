@@ -3,6 +3,7 @@ package chain
 import (
 	"time"
 
+	"github.com/freehandle/breeze/consensus/bft"
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/util"
 )
@@ -14,9 +15,8 @@ type BlockHeader struct {
 	CheckpointHash crypto.Hash
 	Proposer       crypto.Token
 	ProposedAt     time.Time
-	Duplicate      []byte // Evidence for rule violations on the consesus pool
-	Checksum       []byte // State checksum
-	Candidate      []byte // Validator candidate evidence for state checksum
+	Duplicate      *bft.Duplicate       // Evidence for rule violations on the consesus pool
+	Candidate      []*ChecksumStatement // Validator candidate evidence for state checksum
 }
 
 func (b BlockHeader) Clone() BlockHeader {
@@ -38,6 +38,11 @@ func (b BlockHeader) Serialize() []byte {
 	util.PutHash(b.CheckpointHash, &bytes)
 	util.PutToken(b.Proposer, &bytes)
 	util.PutTime(b.ProposedAt, &bytes)
+	bft.PutDuplicate(b.Duplicate, &bytes)
+	util.PutUint16(uint16(len(b.Candidate)), &bytes)
+	for _, candidate := range b.Candidate {
+		PutChecksumStatement(candidate, &bytes)
+	}
 	return bytes
 }
 
@@ -50,6 +55,12 @@ func ParseBlockHeader(data []byte) *BlockHeader {
 	block.CheckpointHash, position = util.ParseHash(data, position)
 	block.Proposer, position = util.ParseToken(data, position)
 	block.ProposedAt, position = util.ParseTime(data, position)
+	block.Duplicate, position = bft.ParseDuplicatePosition(data, position)
+	count, position := util.ParseUint16(data, position)
+	block.Candidate = make([]*ChecksumStatement, count)
+	for i := 0; i < int(count); i++ {
+		block.Candidate[i], position = ParseChecksumStatementPosition(data, position)
+	}
 	if position != len(data) {
 		return nil
 	}
@@ -60,6 +71,7 @@ type BlockSeal struct {
 	Hash          crypto.Hash
 	FeesCollected uint64
 	SealSignature crypto.Signature
+	Consensus     []*bft.Ballot
 }
 
 func (b BlockSeal) Clone() BlockSeal {
@@ -74,6 +86,10 @@ func (b BlockSeal) Serialize() []byte {
 	util.PutHash(b.Hash, &bytes)
 	util.PutUint64(b.FeesCollected, &bytes)
 	util.PutSignature(b.SealSignature, &bytes)
+	util.PutByte(byte(len(b.Consensus)), &bytes)
+	for _, ballot := range b.Consensus {
+		bft.PutBallot(ballot, &bytes)
+	}
 	return bytes
 }
 
@@ -83,6 +99,11 @@ func ParseBlockSeal(data []byte) *BlockSeal {
 	block.Hash, position = util.ParseHash(data, position)
 	block.FeesCollected, position = util.ParseUint64(data, position)
 	block.SealSignature, position = util.ParseSignature(data, position)
+	count, position := util.ParseByte(data, position)
+	block.Consensus = make([]*bft.Ballot, count)
+	for i := 0; i < int(count); i++ {
+		block.Consensus[i], position = bft.ParseBallotPosition(data, position)
+	}
 	if position != len(data) {
 		return nil
 	}

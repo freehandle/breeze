@@ -13,7 +13,7 @@ type Validator struct {
 	Weight  int
 }
 
-type Validators []Validator
+type Validators []*Validator
 
 type TokenHash struct {
 	Token crypto.Token
@@ -45,6 +45,18 @@ type ChecksumWindowValidatorPool struct {
 	weights     map[crypto.Token]int
 	consensus   []*socket.ChannelConnection
 	blocks      *socket.PercolationPool
+	validators  []socket.CommitteeMember
+}
+
+func SingleCommittee(credentials crypto.PrivateKey) *ChecksumWindowValidatorPool {
+	return &ChecksumWindowValidatorPool{
+		credentials: credentials,
+		order:       []crypto.Token{credentials.PublicKey()},
+		weights:     map[crypto.Token]int{credentials.PublicKey(): 1},
+		consensus:   make([]*socket.ChannelConnection, 0),
+		blocks:      socket.AssembleOwnPercolationPool(),
+		validators:  []socket.CommitteeMember{{Token: credentials.PublicKey()}},
+	}
 }
 
 func BroadcastPercolationRule(nodecount int) socket.PercolationRule {
@@ -57,14 +69,14 @@ func BroadcastPercolationRule(nodecount int) socket.PercolationRule {
 	}
 }
 
-func LaunchValidatorPool(validators []Validator, credentials crypto.PrivateKey, seed []byte) *ChecksumWindowValidatorPool {
+func LaunchValidatorPool(validators Validators, credentials crypto.PrivateKey, seed []byte) *ChecksumWindowValidatorPool {
 	pool := &ChecksumWindowValidatorPool{
 		credentials: credentials,
 	}
 	return pool.PrepareNext(validators, seed)
 }
 
-func (v *ChecksumWindowValidatorPool) PrepareNext(validators []Validator, seed []byte) *ChecksumWindowValidatorPool {
+func (v *ChecksumWindowValidatorPool) PrepareNext(validators Validators, seed []byte) *ChecksumWindowValidatorPool {
 
 	pool := &ChecksumWindowValidatorPool{
 		credentials: v.credentials,

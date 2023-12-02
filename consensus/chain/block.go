@@ -139,6 +139,14 @@ type CommitBlock struct {
 	mutations *state.Mutations
 }
 
+func (c *CommitBlock) Sealed() *SealedBlock {
+	return &SealedBlock{
+		Header:  c.Header,
+		Actions: c.Actions,
+		Seal:    c.Seal,
+	}
+}
+
 func ParseCommitBlock(data []byte) *CommitBlock {
 	var block CommitBlock
 	position := 0

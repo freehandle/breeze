@@ -1,16 +1,17 @@
 package swell
 
 import (
-	"log/slog"
+	"context"
 	"time"
 
 	"github.com/freehandle/breeze/consensus/chain"
+	"github.com/freehandle/breeze/consensus/relay"
 	"github.com/freehandle/breeze/consensus/store"
 	"github.com/freehandle/breeze/crypto"
-	"github.com/freehandle/breeze/socket"
 )
 
 type NetworkConfiguration struct {
+	NetworkHash       crypto.Hash
 	BlockInterval     time.Duration
 	MaxPoolSize       int
 	MaxCommitteeSize  int
@@ -20,53 +21,25 @@ type NetworkConfiguration struct {
 	StateSyncPort     int
 }
 
+type ValidatorConfig struct {
+	credentials crypto.PrivateKey
+	walletPath  string
+	swellConfig SwellNetworkConfiguration
+	actions     *store.ActionStore
+	relay       *relay.Node
+}
+
 const BlockInterval = time.Second
 
-type ValidatorConfig struct {
-	Chain *chain.Blockchain
-}
-
-func NewGenesisNode(wallet, node crypto.PrivateKey, walletpath string) chan error {
-	terminate := make(chan error, 2)
-
-	token := node.PublicKey()
-
-	validator := Node{
-		checkpoint:   0,
-		blockchain:   chain.BlockchainFromGenesisState(wallet, walletpath),
-		actions:      store.NewActionStore(1),
-		credentials:  node,
-		channel:      make([]*socket.ChannelConnection, 0),
-		broadcasting: nil,
-		validators:   make([]socket.CommitteeMember, 0),
-		weights:      map[crypto.Token]int{token: 1},
-		order:        []crypto.Token{token},
+func NewGenesisNode(ctx context.Context, wallet crypto.PrivateKey, config ValidatorConfig) {
+	node := &ValidatingNode{
+		window:      0,
+		blockchain:  chain.BlockchainFromGenesisState(wallet, config.walletPath, config.swellConfig.NetworkHash, config.swellConfig.BlockInterval),
+		actions:     store.NewActionStore(1),
+		credentials: config.credentials,
+		committee:   SingleCommittee(config.credentials),
+		swellConfig: config.swellConfig,
 	}
-
-	go func() {
-		tick := time.NewTicker(BlockInterval)
-		epoch := uint64(0)
-		consensusConfirmation := make(chan BlockConsensusConfirmation)
-		for {
-			select {
-			case <-tick.C:
-				epoch += 1
-				validator.RunEpoch(epoch, nil)
-			case confirmation := <-consensusConfirmation:
-				if confirmation.Status {
-					if validator.checkpoint < confirmation.Epoch {
-						validator.checkpoint = confirmation.Epoch
-					}
-				} else {
-					slog.Warn("validator consensus failed for epoch", "epoch", confirmation.Epoch)
-				}
-			}
-		}
-	}()
-
-	return terminate
-}
-
-func NewValidatorNode(config *ValidatorConfig, joinEpoch uint64) {
-
+	RunValidatorNode(ctx, node, 0)
+	<-ctx.Done()
 }

@@ -114,24 +114,47 @@ func (w *Wallet) Close() bool {
 	return <-ok
 }
 
-func NewMemoryWalletStore(epoch uint64, bitsForBucket int64) *Wallet {
+func NewMemoryWalletStore(name string, bitsForBucket int64) *Wallet {
 	nbytes := 56 + int64(1<<bitsForBucket)*(40*6+8)
 	bytestore := papirus.NewMemoryStore(nbytes)
 	Bucketstore := papirus.NewBucketStore(40, 6, bytestore)
 	w := &Wallet{
-		HS: papirus.NewHashStore("wallet", Bucketstore, int(bitsForBucket), creditOrDebit),
+		HS: papirus.NewHashStore(name, Bucketstore, int(bitsForBucket), creditOrDebit),
 	}
 	w.HS.Start()
 	return w
 }
 
-func NewFileWalletStore(filePath string, epoch uint64, bitsForBucket int64) *Wallet {
+func NewFileWalletStore(filePath, name string, bitsForBucket int64) *Wallet {
 	nbytes := 56 + int64(1<<bitsForBucket)*(40*6+8)
 	bytestore := papirus.NewFileStore(filePath, nbytes)
 	Bucketstore := papirus.NewBucketStore(40, 6, bytestore)
 	w := &Wallet{
-		HS: papirus.NewHashStore("wallet", Bucketstore, int(bitsForBucket), creditOrDebit),
+		HS: papirus.NewHashStore(name, Bucketstore, int(bitsForBucket), creditOrDebit),
 	}
 	w.HS.Start()
 	return w
+}
+
+func NewFileWalletStoreFromBytes(filePath, name string, data []byte) *Wallet {
+	bytestore := papirus.NewFileStore(filePath, 0)
+	return newWalltetStoreFromBytes(name, bytestore, data)
+}
+
+func NewMemoryWalletStoreFromBytes(name string, data []byte) *Wallet {
+	bytestore := papirus.NewMemoryStore(0)
+	return newWalltetStoreFromBytes(name, bytestore, data)
+}
+
+func newWalltetStoreFromBytes(name string, store papirus.ByteStore, data []byte) *Wallet {
+	hs := papirus.NewHashStoreFromClonedBytes(name, store, creditOrDebit, data)
+	w := &Wallet{
+		HS: hs,
+	}
+	w.HS.Start()
+	return w
+}
+
+func (w *Wallet) Bytes() []byte {
+	return w.HS.Bytes()
 }

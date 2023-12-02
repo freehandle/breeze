@@ -35,27 +35,36 @@ func NewDuplicate() *Duplicate {
 	}
 }
 
-func (d *Duplicate) Serialize() []byte {
-	bytes := []byte{}
-	util.PutUint16(uint16(len(d.Votes)), &bytes)
+func PutDuplicate(d *Duplicate, bytes *[]byte) {
+	util.PutUint16(uint16(len(d.Votes)), bytes)
 	for _, vote := range d.Votes {
-		util.PutByteArray(vote.One.Serialize(), &bytes)
-		util.PutByteArray(vote.Two.Serialize(), &bytes)
+		util.PutByteArray(vote.One.Serialize(), bytes)
+		util.PutByteArray(vote.Two.Serialize(), bytes)
 	}
-	util.PutUint16(uint16(len(d.Commits)), &bytes)
+	util.PutUint16(uint16(len(d.Commits)), bytes)
 	for _, commit := range d.Commits {
-		util.PutByteArray(commit.One.Serialize(), &bytes)
-		util.PutByteArray(commit.Two.Serialize(), &bytes)
+		util.PutByteArray(commit.One.Serialize(), bytes)
+		util.PutByteArray(commit.Two.Serialize(), bytes)
 	}
-	util.PutUint16(uint16(len(d.Proposals)), &bytes)
+	util.PutUint16(uint16(len(d.Proposals)), bytes)
 	for _, proposal := range d.Proposals {
-		util.PutByteArray(proposal.One.Serialize(), &bytes)
-		util.PutByteArray(proposal.Two.Serialize(), &bytes)
+		util.PutByteArray(proposal.One.Serialize(), bytes)
+		util.PutByteArray(proposal.Two.Serialize(), bytes)
 	}
+}
+
+func (d *Duplicate) Serialize() []byte {
+	bytes := make([]byte, 0)
+	PutDuplicate(d, &bytes)
 	return bytes
 }
 
-func ParseDuplicate(data []byte, position int) (*Duplicate, int) {
+func ParseDuplicate(data []byte) *Duplicate {
+	parsed, _ := ParseDuplicatePosition(data, 0)
+	return parsed
+}
+
+func ParseDuplicatePosition(data []byte, position int) (*Duplicate, int) {
 	duplicate := NewDuplicate()
 	var count uint16
 	count, position = util.ParseUint16(data, position)
@@ -66,7 +75,7 @@ func ParseDuplicate(data []byte, position int) (*Duplicate, int) {
 		oneVote := ParseRoundVote(one)
 		twoVote := ParseRoundVote(two)
 		if oneVote == nil || twoVote == nil {
-			return nil, len(data)
+			return nil, len(data) + 1
 		}
 		duplicate.AddVote(oneVote, twoVote)
 	}
@@ -77,7 +86,7 @@ func ParseDuplicate(data []byte, position int) (*Duplicate, int) {
 		oneCommit := ParseRoundCommit(one)
 		twoCommit := ParseRoundCommit(two)
 		if oneCommit == nil || twoCommit == nil {
-			return nil, len(data)
+			return nil, len(data) + 1
 		}
 		duplicate.AddCommit(oneCommit, twoCommit)
 	}

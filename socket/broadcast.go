@@ -56,6 +56,13 @@ func (b *PercolationPool) Send(epoch uint64, data []byte) {
 	}
 }
 
+func AssembleOwnPercolationPool() *PercolationPool {
+	return &PercolationPool{
+		connections: make([]*BufferedChannel, 0),
+		rule:        func(epoch uint64) []int { return []int{} },
+	}
+}
+
 // AssemblePercolationPool creates a pool of connections to other nodes in the
 // peer group. It uses live connection over an existing pool if provided.
 func AssemblePercolationPool(peers []CommitteeMember, credentials crypto.PrivateKey, port int, rule PercolationRule, existing *PercolationPool) *PercolationPool {
