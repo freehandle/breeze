@@ -3,7 +3,6 @@ package socket
 import (
 	"fmt"
 	"log/slog"
-	"net"
 	"sync"
 	"time"
 
@@ -86,11 +85,11 @@ func newPool[T TokenComparer](peers []CommitteeMember, connected []T, token cryp
 	return pool
 }
 
-func AssembleCommittee[T TokenComparer](peers []CommitteeMember, connected []T, NewT func(*SignedConnection) T, credentials crypto.PrivateKey, port int) chan []T {
+func AssembleCommittee[T TokenComparer](peers []CommitteeMember, connected []T, NewT func(*SignedConnection) T, credentials crypto.PrivateKey, port int, hostname string) chan []T {
 	done := make(chan []T, 2)
 	pool := newPool(peers, connected, credentials.PublicKey(), NewT)
 
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%v", port))
+	listener, err := Listen(fmt.Sprintf(":%v", port))
 	if err != nil {
 		slog.Warn("BuilderCommittee: could not listen on port", "port", port, "error", err)
 		done <- nil
@@ -101,7 +100,7 @@ func AssembleCommittee[T TokenComparer](peers []CommitteeMember, connected []T, 
 		go func(address string, token crypto.Token) {
 			for n := 0; n < CommitteeRetries; n++ {
 				time.Sleep(200 * time.Millisecond)
-				conn, err := Dial(address, credentials, token)
+				conn, err := Dial(hostname, address, credentials, token)
 				if err == nil {
 					ok, remaining := addToPool(conn, pool, NewT)
 					if !ok {

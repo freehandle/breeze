@@ -243,14 +243,14 @@ func GroupGossip(epoch uint64, connections []*ChannelConnection) *Gossip {
 	}
 */
 
-func AssembleChannelNetwork(peers []CommitteeMember, credentials crypto.PrivateKey, port int, existing []*ChannelConnection) []*ChannelConnection {
+func AssembleChannelNetwork(peers []CommitteeMember, credentials crypto.PrivateKey, port int, hostname string, existing []*ChannelConnection) []*ChannelConnection {
 	for n, peer := range peers {
 		peers[n] = CommitteeMember{
 			Address: fmt.Sprintf("%v:%v", peer.Address, port),
 			Token:   peer.Token,
 		}
 	}
-	committee := AssembleCommittee[*ChannelConnection](peers, existing, NewChannelConnection, credentials, port)
+	committee := AssembleCommittee[*ChannelConnection](peers, existing, NewChannelConnection, credentials, port, hostname)
 	members := <-committee
 	return members
 }

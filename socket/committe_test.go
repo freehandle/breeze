@@ -22,7 +22,7 @@ func TestBuildCommittee(t *testing.T) {
 	credentials := []crypto.PrivateKey{firstPK, secondPK, thirdPK}
 	channels := make([]chan []*ChannelConnection, 3)
 	for n, pk := range credentials {
-		channels[n] = AssembleCommittee(peers, nil, NewChannelConnection, pk, 3500+n)
+		channels[n] = AssembleCommittee(peers, nil, NewChannelConnection, pk, 3500+n, "localhost")
 		time.Sleep(50 * time.Millisecond)
 	}
 

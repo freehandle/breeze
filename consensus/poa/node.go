@@ -3,7 +3,6 @@ package poa
 import (
 	"fmt"
 	"log/slog"
-	"net"
 
 	"github.com/freehandle/breeze/consensus/chain"
 	"github.com/freehandle/breeze/consensus/store"
@@ -15,13 +14,13 @@ func NewValidator(blockchain *chain.Chain, config SingleAuthorityConfig) chan er
 
 	finalize := make(chan error, 2)
 
-	incomming, err := net.Listen("tcp", fmt.Sprintf(":%v", config.IncomingPort))
+	incomming, err := socket.Default.Listen("tcp", fmt.Sprintf(":%v", config.IncomingPort))
 	if err != nil {
 		finalize <- fmt.Errorf("could not listen on port %v: %v", config.IncomingPort, err)
 		return finalize
 	}
 
-	outgoing, err := net.Listen("tcp", fmt.Sprintf(":%v", config.OutgoingPort))
+	outgoing, err := socket.Default.Listen("tcp", fmt.Sprintf(":%v", config.OutgoingPort))
 	if err != nil {
 		finalize <- fmt.Errorf("could not listen on port %v: %v", config.OutgoingPort, err)
 		return finalize

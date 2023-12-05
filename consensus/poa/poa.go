@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
-	"net"
 	"time"
 
 	"github.com/freehandle/breeze/consensus/chain"
@@ -56,13 +55,13 @@ func Genesis(config SingleAuthorityConfig) chan error {
 	}
 	blockchain.LastCommitHash = crypto.HashToken(config.Credentials.PublicKey())
 
-	incomming, err := net.Listen("tcp", fmt.Sprintf(":%v", config.IncomingPort))
+	incomming, err := socket.Default.Listen("tcp", fmt.Sprintf(":%v", config.IncomingPort))
 	if err != nil {
 		finalize <- fmt.Errorf("could not listen on port %v: %v", config.IncomingPort, err)
 		return finalize
 	}
 
-	outgoing, err := net.Listen("tcp", fmt.Sprintf(":%v", config.OutgoingPort))
+	outgoing, err := socket.Default.Listen("tcp", fmt.Sprintf(":%v", config.OutgoingPort))
 	if err != nil {
 		finalize <- fmt.Errorf("could not listen on port %v: %v", config.OutgoingPort, err)
 		return finalize

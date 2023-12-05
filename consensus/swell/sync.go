@@ -13,7 +13,7 @@ import (
 
 func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, syncAddress string, syncToken crypto.Token) error {
 
-	conn, err := socket.Dial(syncAddress, config.credentials, syncToken)
+	conn, err := socket.Dial(config.hostname, syncAddress, config.credentials, syncToken)
 	if err != nil {
 		return err
 	}

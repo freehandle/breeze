@@ -40,6 +40,7 @@ func (h TokenHashArray) Swap(i, j int) {
 }
 
 type ChecksumWindowValidatorPool struct {
+	hostname    string
 	credentials crypto.PrivateKey
 	order       []crypto.Token
 	weights     map[crypto.Token]int
@@ -48,8 +49,9 @@ type ChecksumWindowValidatorPool struct {
 	validators  []socket.CommitteeMember
 }
 
-func SingleCommittee(credentials crypto.PrivateKey) *ChecksumWindowValidatorPool {
+func SingleCommittee(credentials crypto.PrivateKey, hostname string) *ChecksumWindowValidatorPool {
 	return &ChecksumWindowValidatorPool{
+		hostname:    hostname,
 		credentials: credentials,
 		order:       []crypto.Token{credentials.PublicKey()},
 		weights:     map[crypto.Token]int{credentials.PublicKey(): 1},
@@ -113,7 +115,7 @@ func (v *ChecksumWindowValidatorPool) PrepareNext(validators Validators, seed []
 		}
 	}
 
-	pool.consensus = socket.AssembleChannelNetwork(peers, v.credentials, 5401, v.consensus)
-	pool.blocks = socket.AssemblePercolationPool(peers, v.credentials, 5400, BroadcastPercolationRule(len(peers)), v.blocks)
+	pool.consensus = socket.AssembleChannelNetwork(peers, v.credentials, 5401, pool.hostname, v.consensus)
+	pool.blocks = socket.AssemblePercolationPool(peers, v.credentials, 5400, pool.hostname, BroadcastPercolationRule(len(peers)), v.blocks)
 	return pool
 }

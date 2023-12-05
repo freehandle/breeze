@@ -50,7 +50,7 @@ func creditOrDebit(found bool, hash crypto.Hash, b *papirus.Bucket, item int64, 
 			b.WriteItem(item, acc)
 			return papirus.OperationResult{
 				Added:  &papirus.Item{Bucket: b, Item: item},
-				Result: papirus.QueryResult{Ok: false, Data: acc},
+				Result: papirus.QueryResult{Ok: true, Data: acc},
 			}
 		} else {
 			return papirus.OperationResult{

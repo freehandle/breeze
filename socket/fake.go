@@ -8,11 +8,6 @@ import (
 	"time"
 )
 
-type DialListener interface {
-	Dial(network, address string) (net.Conn, error)
-	Listen(network, address string) (net.Listener, error)
-}
-
 type testAddr string
 
 func (t testAddr) Network() string {
@@ -134,18 +129,23 @@ type testPort struct {
 	accept chan net.Conn
 }
 
-func (t *testHost) Dial(network, address string) (net.Conn, error) {
-	if network != "tcp" {
-		return nil, errors.New("invalid network: test only supports tcp")
+func (t *testNetwork) Dial(hostname, address string) (net.Conn, error) {
+	host, ok := t.hosts[hostname]
+	if !ok {
+		return nil, errors.New("testiing hostname not registered")
 	}
-	if listener, ok := t.network.listeners[address]; ok {
-		dialerConn, listenerConn := net.Pipe()
-		listener.accept <- withLatency(listenerConn, t.latency+listener.Node.latency)
-		dialerWithLatency := withLatency(dialerConn, t.latency+listener.Node.latency)
-		t.connections = append(t.connections, dialerWithLatency)
-		return dialerWithLatency, nil
+	for n := 0; n < 3; n++ {
+		if listener, ok := t.listeners[address]; ok {
+			dialerConn, listenerConn := net.Pipe()
+			listenetWithLatency := withLatency(listenerConn, host.latency+listener.Node.latency)
+			listener.accept <- listenetWithLatency
+			listener.Node.connections = append(listener.Node.connections, listenetWithLatency)
+			dialerWithLatency := withLatency(dialerConn, host.latency+listener.Node.latency)
+			host.connections = append(host.connections, dialerWithLatency)
+			return dialerWithLatency, nil
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
-
 	return nil, errors.New("server did not respond")
 }
 
@@ -180,32 +180,33 @@ var TCPNetworkTest = &testNetwork{
 	live:      make([]net.Conn, 0),
 }
 
-func (t *testHost) Listen(network, address string) (net.Listener, error) {
-	if network != "tcp" {
-		return nil, errors.New("invalid network: test only supports tcp")
-	}
-	host, port, err := net.SplitHostPort(address)
+func (t *testNetwork) Listen(address string) (net.Listener, error) {
+	hostname, port, err := net.SplitHostPort(address)
 	if err != nil {
 		return nil, err
 	}
-	node, ok := t.network.hosts[host]
+
+	host, ok := t.hosts[hostname]
 	if !ok {
 		return nil, errors.New("node not found")
 	}
-	if _, ok := t.network.listeners[address]; ok {
+	if _, ok := t.listeners[address]; ok {
 		return nil, errors.New("port already in use")
 	}
 	test := &testPort{
 		Port:   port,
-		Node:   node,
+		Node:   host,
 		accept: make(chan net.Conn),
 	}
-	t.network.listeners[address] = test
+	t.listeners[address] = test
 	return test, nil
 
 }
 
-func (n *testNetwork) AddNode(hostname string, Reliability float64, Latency time.Duration, MaxThroughput int) DialListener {
+func (n *testNetwork) AddNode(hostname string, Reliability float64, Latency time.Duration, MaxThroughput int) {
+	if hostname == "" || hostname == "localhost" {
+		panic("testNetwork invalid hostname")
+	}
 	host := testHost{
 		hostname:      hostname,
 		reliability:   Reliability,
@@ -215,7 +216,6 @@ func (n *testNetwork) AddNode(hostname string, Reliability float64, Latency time
 		network:       n,
 	}
 	n.hosts[hostname] = &host
-	return &host
 }
 
 func (n *testNetwork) AddReliableNode(address string, Latency time.Duration, MaxThroughput int) {

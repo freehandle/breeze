@@ -1,11 +1,10 @@
-package pos
+package permission
 
 import (
 	"log/slog"
 
 	"github.com/freehandle/breeze/consensus/bft"
 	"github.com/freehandle/breeze/consensus/chain"
-	"github.com/freehandle/breeze/consensus/swell"
 	"github.com/freehandle/breeze/crypto"
 )
 
@@ -39,18 +38,21 @@ func (pos *ProofOfStake) Punish(duplicates *bft.Duplicate, weights map[crypto.To
 	return punishments
 }
 
-func (pos *ProofOfStake) DeterminePool(chain *chain.Blockchain, candidates []crypto.Token) swell.Validators {
-	validated := make(swell.Validators, 0)
+func (pos *ProofOfStake) DeterminePool(chain *chain.Blockchain, candidates []crypto.Token) map[crypto.Token]int {
+	validated := make(map[crypto.Token]int)
 	for _, token := range candidates {
 		_, deposit := chain.Checksum.State.Deposits.Balance(token)
 		if deposit >= pos.MinimumStage {
-			validated = append(validated, &swell.Validator{
-				Token:  token,
-				Weight: int(deposit / pos.MinimumStage),
-			})
+			validated[token] = int(deposit / pos.MinimumStage)
 		}
 	}
 	return validated
+}
+
+func NewProofOfAuthority() *ProofOfAuthority {
+	return &ProofOfAuthority{
+		Authorized: make([]crypto.Token, 0),
+	}
 }
 
 type ProofOfAuthority struct {
@@ -84,15 +86,12 @@ func (poa *ProofOfAuthority) Punish(duplicates *bft.Duplicate, weights map[crypt
 	return punishments
 }
 
-func (poa *ProofOfAuthority) DeterminePool(chain *chain.Blockchain, candidates []crypto.Token) swell.Validators {
-	validated := make(swell.Validators, 0)
+func (poa *ProofOfAuthority) DeterminePool(chain *chain.Blockchain, candidates []crypto.Token) map[crypto.Token]int {
+	validated := make(map[crypto.Token]int)
 	for _, candidate := range candidates {
 		for _, token := range poa.Authorized {
 			if candidate.Equal(token) {
-				validated = append(validated, &swell.Validator{
-					Token:  token,
-					Weight: 1,
-				})
+				validated[token] = 1
 			}
 		}
 	}

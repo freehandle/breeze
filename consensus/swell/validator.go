@@ -2,6 +2,7 @@ package swell
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 )
 
 func (node *SwellNode) RunValidatingNode(ctx context.Context, committee *ChecksumWindowValidatorPool, window int) {
+
 	windowStartEpoch := uint64(window*node.config.ChecksumWindow + 1)
 	epoch := windowStartEpoch
 	waiting := node.blockchain.Timer(epoch)
@@ -28,6 +30,7 @@ func (node *SwellNode) RunValidatingNode(ctx context.Context, committee *Checksu
 				}
 				epoch += 1
 				waiting = node.blockchain.Timer(epoch)
+				fmt.Println("epoch", epoch)
 			case <-done:
 				waiting.Stop()
 				return
@@ -124,7 +127,7 @@ func (node *SwellNode) RunEpoch(epoch uint64, network *ChecksumWindowValidatorPo
 			}
 		}
 	}
-	bftConnections := socket.AssembleChannelNetwork(peers, node.credentials, 5401, network.consensus)
+	bftConnections := socket.AssembleChannelNetwork(peers, node.credentials, 5401, node.hostname, network.consensus)
 	committee.Gossip = socket.GroupGossip(epoch, bftConnections)
 	pool := bft.LaunchPooling(*committee, node.credentials)
 	leader := node.validators.order[leaderCount]

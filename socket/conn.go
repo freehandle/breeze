@@ -26,13 +26,31 @@ func DialTCP(laddr, raddr *net.TCPAddr, credentials crypto.PrivateKey, token cry
 	return performClientHandShake(conn, credentials, token)
 }
 
-func Dial(address string, credentials crypto.PrivateKey, token crypto.Token) (*SignedConnection, error) {
-	conn, err := net.Dial("tcp", address)
+func Dial(hostname, address string, credentials crypto.PrivateKey, token crypto.Token) (*SignedConnection, error) {
+	var conn net.Conn
+	var err error
+	if hostname == "" || hostname == "localhost" {
+		conn, err = net.Dial("tcp", address)
+	} else {
+		conn, err = TCPNetworkTest.Dial(hostname, address)
+	}
 	if err != nil {
 		return nil, err
 	}
 	return performClientHandShake(conn, credentials, token)
 
+}
+
+func Listen(address string) (net.Listener, error) {
+	hostname, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, err
+	}
+	if hostname == "" || hostname == "localhost" {
+		return net.Listen("tcp", address)
+	} else {
+		return TCPNetworkTest.Listen(address)
+	}
 }
 
 type SignedConnection struct {

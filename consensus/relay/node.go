@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
-	"net"
 
 	"github.com/freehandle/breeze/consensus/chain"
 	"github.com/freehandle/breeze/crypto"
@@ -19,6 +18,7 @@ type Config struct {
 	AdminPort         int
 	Firewall          *Firewall
 	Credentials       crypto.PrivateKey
+	Hostname          string
 }
 
 func NewFireWall(authorizedGateway []crypto.Token, autorizedBlockListener []crypto.Token) *Firewall {
@@ -41,6 +41,15 @@ type Node struct {
 	Ctx           context.Context
 }
 
+func NewNode() *Node {
+	return &Node{
+		ActionGateway: make(chan []byte),
+		BlockEvents:   make(chan []byte),
+		SyncRequest:   make(chan SyncRequest),
+		Ctx:           context.Background(),
+	}
+}
+
 type SyncRequest struct {
 	Epoch uint64
 	State bool
@@ -50,13 +59,13 @@ type SyncRequest struct {
 func (n *Node) Run(config Config) chan error {
 	finalize := make(chan error, 2)
 
-	gatewayPort, err := net.Listen("tcp", fmt.Sprintf(":%v", config.GatewayPort))
+	gatewayPort, err := socket.Listen(fmt.Sprintf("%v:%v", config.Hostname, config.GatewayPort))
 	if err != nil {
 		finalize <- fmt.Errorf("could not listen on port %v: %v", config.GatewayPort, err)
 		return finalize
 	}
 
-	blocksPort, err := net.Listen("tcp", fmt.Sprintf(":%v", config.BlockListenerPort))
+	blocksPort, err := socket.Listen(fmt.Sprintf("%v:%v", config.Hostname, config.BlockListenerPort))
 	if err != nil {
 		finalize <- fmt.Errorf("could not listen on port %v: %v", config.BlockListenerPort, err)
 		return finalize
@@ -139,7 +148,7 @@ func (n *Node) Run(config Config) chan error {
 	}()
 
 	if config.AdminPort > 0 {
-		listenAdminPort, err := net.Listen("tcp", fmt.Sprintf(":%v", config.AdminPort))
+		listenAdminPort, err := socket.Listen(fmt.Sprintf("%v:%v", config.Hostname, config.AdminPort))
 		if err != nil {
 			finalize <- fmt.Errorf("could not listen on port %v: %v", config.BlockListenerPort, err)
 			return finalize

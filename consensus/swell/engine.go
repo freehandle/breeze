@@ -27,7 +27,7 @@ const (
 
 type Permission interface {
 	Punish(duplicates *bft.Duplicate, weights map[crypto.Token]int) map[crypto.Token]uint64
-	DeterminePool(chain *chain.Blockchain, candidates []crypto.Token) Validators
+	DeterminePool(chain *chain.Blockchain, candidates []crypto.Token) map[crypto.Token]int
 }
 
 type BlockConsensusConfirmation struct {
@@ -63,6 +63,7 @@ type ValidatorConfig struct {
 	swellConfig SwellNetworkConfiguration
 	actions     *store.ActionStore
 	relay       *relay.Node
+	hostname    string
 }
 
 const BlockInterval = time.Second
@@ -77,8 +78,10 @@ func NewGenesisNode(ctx context.Context, wallet crypto.PrivateKey, config Valida
 			order:   []crypto.Token{token},
 			weights: map[crypto.Token]int{token: 1},
 		},
-		config: config.swellConfig,
+		config:   config.swellConfig,
+		relay:    config.relay,
+		hostname: config.hostname,
 	}
-	node.RunValidatingNode(ctx, SingleCommittee(config.credentials), 0)
+	node.RunValidatingNode(ctx, SingleCommittee(config.credentials, config.hostname), 0)
 	<-ctx.Done()
 }

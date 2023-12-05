@@ -25,6 +25,7 @@ type SwellNode struct {
 	config      SwellNetworkConfiguration
 	active      chan chan error
 	relay       *relay.Node
+	hostname    string
 }
 
 func (s *SwellNode) AddSealedBlock(sealed *chain.SealedBlock) {
@@ -121,10 +122,16 @@ func (s *SwellNode) RunNonValidatingNode(ctx context.Context, conn *socket.Signe
 					} else if s.blockchain.LastCommitEpoch == nextStatementEpoch {
 						tokens := GetConsensusTokens(naked, dressed, s.validators.weights, s.blockchain.LastCommitEpoch)
 						if len(tokens) > 0 {
-							committee := s.config.Permission.DeterminePool(s.blockchain, tokens)
-							for _, member := range committee {
-								if statement, ok := dressed[member.Token]; ok {
-									member.Address = statement.Address
+							approved := s.config.Permission.DeterminePool(s.blockchain, tokens)
+							committee := make(Validators, 0)
+							for token, weight := range approved {
+								if statement, ok := dressed[token]; ok {
+									member := Validator{
+										Address: statement.Address,
+										Weight:  weight,
+										Token:   token,
+									}
+									committee = append(committee, &member)
 								}
 							}
 							s.JoinCandidateNode(ctx, committee, []byte{}, int(nextWindowEpoch))
