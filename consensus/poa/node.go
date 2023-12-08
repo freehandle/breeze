@@ -34,7 +34,7 @@ func NewValidator(blockchain *chain.Chain, config SingleAuthorityConfig) chan er
 
 	newOutgoing := make(chan OutgoindConnectionRequest)
 
-	action := actions.Actions
+	action := actions.Pop
 
 	incorporated := make(chan []byte)
 	newBlock := make(chan *NewBlock)

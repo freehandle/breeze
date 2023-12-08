@@ -76,17 +76,15 @@ type SealedBlock struct {
 
 func ParseSealedBlock(data []byte) *SealedBlock {
 	var block SealedBlock
-	position := 0
-	block.Header.NetworkHash, position = util.ParseHash(data, position)
-	block.Header.Epoch, position = util.ParseUint64(data, position)
-	block.Header.CheckPoint, position = util.ParseUint64(data, position)
-	block.Header.CheckpointHash, position = util.ParseHash(data, position)
-	block.Header.Proposer, position = util.ParseToken(data, position)
-	block.Header.ProposedAt, position = util.ParseTime(data, position)
+	header, position := parseHeaderBlockHeaderPosition(data, 0)
+	if header == nil {
+		return nil
+	}
+	block.Header = *header
 	block.Actions, position = ParseAction(data, position)
-	block.Seal.Hash, position = util.ParseHash(data, position)
-	block.Seal.FeesCollected, position = util.ParseUint64(data, position)
-	block.Seal.SealSignature, position = util.ParseSignature(data, position)
+	var seal *BlockSeal
+	seal, position = parseBlockSealPosition(data, position)
+	block.Seal = *seal
 	if position != len(data) {
 		return nil
 	}
@@ -149,22 +147,18 @@ func (c *CommitBlock) Sealed() *SealedBlock {
 
 func ParseCommitBlock(data []byte) *CommitBlock {
 	var block CommitBlock
-	position := 0
-	block.Header.NetworkHash, position = util.ParseHash(data, position)
-	block.Header.Epoch, position = util.ParseUint64(data, position)
-	block.Header.CheckPoint, position = util.ParseUint64(data, position)
-	block.Header.CheckpointHash, position = util.ParseHash(data, position)
-	block.Header.Proposer, position = util.ParseToken(data, position)
-	block.Header.ProposedAt, position = util.ParseTime(data, position)
+	header, position := parseHeaderBlockHeaderPosition(data, 0)
+	if header == nil {
+		return nil
+	}
+	block.Header = *header
 	block.Actions, position = ParseAction(data, position)
-	block.Seal.Hash, position = util.ParseHash(data, position)
-	block.Seal.FeesCollected, position = util.ParseUint64(data, position)
-	block.Seal.SealSignature, position = util.ParseSignature(data, position)
-	block.Commit = &BlockCommit{}
-	block.Commit.Invalidated, position = util.ParseHashArray(data, position)
-	block.Commit.FeesCollected, position = util.ParseUint64(data, position)
-	block.Commit.PublishedBy, position = util.ParseToken(data, position)
-	block.Commit.PublishSign, position = util.ParseSignature(data, position)
+	var seal *BlockSeal
+	seal, position = parseBlockSealPosition(data, position)
+	block.Seal = *seal
+	var commit *BlockCommit
+	commit, position = parseBlockCommitPosition(data, position)
+	block.Commit = commit
 	if position != len(data) {
 		return nil
 	}

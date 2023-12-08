@@ -3,17 +3,17 @@ package swell
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/freehandle/breeze/consensus/chain"
-	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/protocol/state"
 	"github.com/freehandle/breeze/socket"
 	"github.com/freehandle/breeze/util"
 )
 
-func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, syncAddress string, syncToken crypto.Token) error {
+func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync socket.TokenAddr) error {
 
-	conn, err := socket.Dial(config.hostname, syncAddress, config.credentials, syncToken)
+	conn, err := socket.Dial(config.hostname, sync.Addr, config.credentials, sync.Token)
 	if err != nil {
 		return err
 	}
@@ -45,6 +45,7 @@ func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, syncAddr
 		actions:     config.actions,
 		credentials: config.credentials,
 		config:      config.swellConfig,
+		relay:       config.relay,
 	}
 	node.RunNonValidatingNode(ctx, conn, true)
 	return nil
@@ -76,6 +77,7 @@ func syncChecksum(conn *socket.SignedConnection, walletPath string) (*chain.Chec
 	if len(msg) < 1 || msg[0] != chain.MsgSyncStateWallets {
 		return nil, errors.New("invalid sync wallet message")
 	}
+	fmt.Println("wallet", len(msg))
 	if walletPath != "" {
 		checksum.State.Wallets = state.NewFileWalletStoreFromBytes(walletPath, "wallet", msg[1:])
 	} else {

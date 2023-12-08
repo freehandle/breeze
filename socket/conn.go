@@ -13,6 +13,11 @@ import (
 var ErrMessageTooLarge = errors.New("message size cannot be larger than 65.536 bytes")
 var ErrInvalidSignature = errors.New("signature is invalid")
 
+type TokenAddr struct {
+	Token crypto.Token
+	Addr  string
+}
+
 type Message struct {
 	Token crypto.Token
 	Data  []byte
@@ -84,6 +89,13 @@ func (s *SignedConnection) mustReadN(N int) ([]byte, error) {
 		nBytes, err := s.conn.Read(msg)
 		if err != nil && err != io.EOF {
 			return nil, err
+		} else if err == io.EOF {
+			buffer = append(buffer, msg[:nBytes]...)
+			if len(buffer) == N {
+				return buffer, nil
+			} else {
+				return nil, errors.New("signed connection read: EOF before full message received")
+			}
 		}
 		if nBytes > 0 {
 			buffer = append(buffer, msg[:nBytes]...)

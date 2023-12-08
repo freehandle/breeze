@@ -2,6 +2,7 @@ package swell
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/freehandle/breeze/consensus/chain"
@@ -66,6 +67,14 @@ func (s *SwellNode) RunNonValidatingNode(ctx context.Context, conn *socket.Signe
 		var activateResponse chan error
 		for {
 			select {
+			case req := <-s.relay.SyncRequest:
+				fmt.Println("sync request")
+				if req.State {
+					go s.blockchain.SyncState(req.Conn)
+				} else {
+					go s.blockchain.SyncBlocksServer(req.Conn, req.Epoch)
+				}
+				fmt.Println("sync request", req.Epoch, req.State)
 			case activateResponse = <-s.active:
 				candidate = true
 			case <-cancel:
@@ -82,6 +91,7 @@ func (s *SwellNode) RunNonValidatingNode(ctx context.Context, conn *socket.Signe
 					cancelFunc()
 				} else {
 					hasChecksum = true
+					fmt.Println("checksum", s.blockchain.Checksum.Epoch, crypto.EncodeHash(s.blockchain.Checksum.Hash))
 					for _, sealed := range sealedAfterChekcsum {
 						s.blockchain.AddSealedBlock(sealed)
 					}

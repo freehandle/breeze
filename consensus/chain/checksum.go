@@ -1,11 +1,14 @@
 package chain
 
 import (
+	"fmt"
+
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/util"
 )
 
 func (c *Blockchain) MarkCheckpoint(done chan bool) {
+	fmt.Println("tmj")
 	c.mu.Lock()
 	c.Cloning = true
 	go func() {
@@ -13,6 +16,7 @@ func (c *Blockchain) MarkCheckpoint(done chan bool) {
 		hash := c.LastCommitHash
 		clonedState := c.CommitState.Clone()
 		if clonedState == nil {
+			fmt.Println("cloned state is nil")
 			done <- false
 			return
 		}
@@ -23,9 +27,11 @@ func (c *Blockchain) MarkCheckpoint(done chan bool) {
 			Hash:          clonedState.ChecksumHash(),
 		}
 		c.Cloning = false
+		fmt.Println(c.Checksum.Hash)
 		done <- true
 	}()
 	c.mu.Unlock()
+
 }
 
 type ChecksumStatement struct {

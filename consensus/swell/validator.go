@@ -25,12 +25,16 @@ func (node *SwellNode) RunValidatingNode(ctx context.Context, committee *Checksu
 		for {
 			select {
 			case <-waiting.C:
+				node.actions.Epoch <- epoch
 				if node.IsPoolMember(epoch) {
-					node.RunEpoch(epoch, committee, mintConfirmation)
+					if len(committee.weights) == 1 {
+						node.BuildSoloBLock(epoch)
+					} else {
+						node.RunEpoch(epoch, committee, mintConfirmation)
+					}
 				}
 				epoch += 1
 				waiting = node.blockchain.Timer(epoch)
-				fmt.Println("epoch", epoch)
 			case <-done:
 				waiting.Stop()
 				return
@@ -145,6 +149,34 @@ func (node *SwellNode) RunEpoch(epoch uint64, network *ChecksumWindowValidatorPo
 	}()
 }
 
+func (node *SwellNode) BuildSoloBLock(epoch uint64) bool {
+	timeout := time.NewTimer(980 * time.Millisecond)
+	header := node.blockchain.NextBlock(epoch)
+	if header == nil {
+		return false
+	}
+	block := node.blockchain.CheckpointValidator(*header)
+	for {
+		select {
+		case action := <-node.actions.Pop:
+			if len(action) > 0 && block.Validate(action) {
+				// clear actionarray
+			}
+		case <-timeout.C:
+			sealed := block.Seal(node.credentials)
+			if sealed == nil {
+				slog.Warn("BuildBlock: could not seal own block")
+				return false
+			} else {
+				node.blockchain.AddSealedBlock(sealed)
+				node.relay.BlockEvents <- chain.SealedBlockMessage(sealed)
+				fmt.Println("epoch", epoch, sealed.Actions.Len(), crypto.Hasher(sealed.Serialize()))
+				return true
+			}
+		}
+	}
+}
+
 func (node *SwellNode) BuildBlock(epoch uint64, network *ChecksumWindowValidatorPool, pool *bft.Pooling) bool {
 	timeout := time.NewTimer(980 * time.Millisecond)
 	header := node.blockchain.NextBlock(epoch)
@@ -158,7 +190,7 @@ func (node *SwellNode) BuildBlock(epoch uint64, network *ChecksumWindowValidator
 	go func() {
 		for {
 			select {
-			case action := <-node.actions.Actions:
+			case action := <-node.actions.Pop:
 				if len(action) > 0 && block.Validate(action) {
 					msg := chain.ActionMessage(action)
 					network.blocks.Send(epoch, msg)

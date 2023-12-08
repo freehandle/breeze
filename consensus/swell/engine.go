@@ -82,6 +82,25 @@ func NewGenesisNode(ctx context.Context, wallet crypto.PrivateKey, config Valida
 		relay:    config.relay,
 		hostname: config.hostname,
 	}
+	RunActionsGateway(ctx, config.relay.ActionGateway, node.actions)
 	node.RunValidatingNode(ctx, SingleCommittee(config.credentials, config.hostname), 0)
 	<-ctx.Done()
+}
+
+func RunActionsGateway(ctx context.Context, gateway chan []byte, store *store.ActionStore) {
+	done := ctx.Done()
+	go func() {
+		for {
+			select {
+			case action := <-gateway:
+				if store.Live {
+					store.Push <- action
+				} else {
+					return
+				}
+			case <-done:
+				return
+			}
+		}
+	}()
 }

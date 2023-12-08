@@ -36,6 +36,12 @@ func NewDuplicate() *Duplicate {
 }
 
 func PutDuplicate(d *Duplicate, bytes *[]byte) {
+	if d == nil {
+		util.PutUint16(0, bytes)
+		util.PutUint16(0, bytes)
+		util.PutUint16(0, bytes)
+		return
+	}
 	util.PutUint16(uint16(len(d.Votes)), bytes)
 	for _, vote := range d.Votes {
 		util.PutByteArray(vote.One.Serialize(), bytes)

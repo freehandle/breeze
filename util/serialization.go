@@ -166,6 +166,9 @@ func ParseActionsArray(data []byte, position int) ([][]byte, int) {
 	array := make([][]byte, int(count))
 	for n := 0; n < int(count); n++ {
 		array[n], position = ParseByteArray(data, position)
+		if position > len(data) {
+			return nil, len(data) + 1
+		}
 	}
 	return array, position
 }

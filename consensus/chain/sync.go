@@ -14,7 +14,7 @@ func (c *Blockchain) SyncBlocksServer(conn *socket.CachedConnection, epoch uint6
 		}
 	}()
 	c.mu.Lock()
-	if len(c.RecentBlocks) > 0 && epoch < c.RecentBlocks[0].Header.Epoch {
+	if len(c.RecentBlocks) > 0 && epoch+1 < c.RecentBlocks[0].Header.Epoch {
 		c.mu.Unlock()
 		conn.Send(append([]byte{MsgSyncError}, []byte("node does not have information that old")...))
 		conn.Close()

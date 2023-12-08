@@ -47,7 +47,14 @@ func (b BlockHeader) Serialize() []byte {
 }
 
 func ParseBlockHeader(data []byte) *BlockHeader {
-	position := 0
+	header, position := parseHeaderBlockHeaderPosition(data, 0)
+	if position != len(data) {
+		return nil
+	}
+	return header
+}
+
+func parseHeaderBlockHeaderPosition(data []byte, position int) (*BlockHeader, int) {
 	var block BlockHeader
 	block.NetworkHash, position = util.ParseHash(data, position)
 	block.Epoch, position = util.ParseUint64(data, position)
@@ -61,10 +68,7 @@ func ParseBlockHeader(data []byte) *BlockHeader {
 	for i := 0; i < int(count); i++ {
 		block.Candidate[i], position = ParseChecksumStatementPosition(data, position)
 	}
-	if position != len(data) {
-		return nil
-	}
-	return &block
+	return &block, position
 }
 
 type BlockSeal struct {
@@ -94,7 +98,14 @@ func (b BlockSeal) Serialize() []byte {
 }
 
 func ParseBlockSeal(data []byte) *BlockSeal {
-	position := 0
+	block, position := parseBlockSealPosition(data, 0)
+	if position != len(data) {
+		return nil
+	}
+	return block
+}
+
+func parseBlockSealPosition(data []byte, position int) (*BlockSeal, int) {
 	var block BlockSeal
 	block.Hash, position = util.ParseHash(data, position)
 	block.FeesCollected, position = util.ParseUint64(data, position)
@@ -104,10 +115,7 @@ func ParseBlockSeal(data []byte) *BlockSeal {
 	for i := 0; i < int(count); i++ {
 		block.Consensus[i], position = bft.ParseBallotPosition(data, position)
 	}
-	if position != len(data) {
-		return nil
-	}
-	return &block
+	return &block, position
 }
 
 type BlockCommit struct {
@@ -132,14 +140,18 @@ func (b BlockCommit) Serialize() []byte {
 }
 
 func ParseBlockCommit(data []byte) *BlockCommit {
-	position := 0
+	block, position := parseBlockCommitPosition(data, 0)
+	if position != len(data) {
+		return nil
+	}
+	return block
+}
+
+func parseBlockCommitPosition(data []byte, position int) (*BlockCommit, int) {
 	var block BlockCommit
 	block.Invalidated, position = util.ParseHashArray(data, position)
 	block.FeesCollected, position = util.ParseUint64(data, position)
 	block.PublishedBy, position = util.ParseToken(data, position)
 	block.PublishSign, position = util.ParseSignature(data, position)
-	if position != len(data) {
-		return nil
-	}
-	return &block
+	return &block, position
 }

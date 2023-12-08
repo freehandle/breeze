@@ -28,7 +28,7 @@ func ParseAction(data []byte, position int) (*ActionArray, int) {
 		}, position
 	}
 	actionArray := &ActionArray{
-		actions: make([]int, len(actions)),
+		actions: make([]int, 0, len(actions)),
 		data:    make([]byte, 0),
 	}
 	for _, action := range actions {

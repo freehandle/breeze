@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -24,6 +25,7 @@ type testMessage struct {
 }
 
 type testConn struct {
+	once    sync.Once
 	write   chan []byte
 	latency time.Duration
 	conn    net.Conn
@@ -39,7 +41,9 @@ func (t *testConn) Write(data []byte) (int, error) {
 }
 
 func (t *testConn) Close() error {
-	close(t.write)
+	t.once.Do(func() {
+		close(t.write)
+	})
 	return t.conn.Close()
 }
 

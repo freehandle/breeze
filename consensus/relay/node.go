@@ -5,12 +5,17 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"net"
 
 	"github.com/freehandle/breeze/consensus/chain"
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/socket"
 	"github.com/freehandle/breeze/util"
 )
+
+type Shutdowner interface {
+	Shutdown()
+}
 
 type Config struct {
 	GatewayPort       int
@@ -38,16 +43,6 @@ type Node struct {
 	ActionGateway chan []byte      // Sends actions to swell engine
 	BlockEvents   chan []byte      // receive block events from swell engine
 	SyncRequest   chan SyncRequest // sends sync requests to swell engine
-	Ctx           context.Context
-}
-
-func NewNode() *Node {
-	return &Node{
-		ActionGateway: make(chan []byte),
-		BlockEvents:   make(chan []byte),
-		SyncRequest:   make(chan SyncRequest),
-		Ctx:           context.Background(),
-	}
 }
 
 type SyncRequest struct {
@@ -56,19 +51,23 @@ type SyncRequest struct {
 	Conn  *socket.CachedConnection
 }
 
-func (n *Node) Run(config Config) chan error {
-	finalize := make(chan error, 2)
+func Run(ctx context.Context, config Config) (*Node, error) {
+	n := &Node{
+		ActionGateway: make(chan []byte),
+		BlockEvents:   make(chan []byte),
+		SyncRequest:   make(chan SyncRequest),
+	}
+
+	var listenAdminPort net.Listener
 
 	gatewayPort, err := socket.Listen(fmt.Sprintf("%v:%v", config.Hostname, config.GatewayPort))
 	if err != nil {
-		finalize <- fmt.Errorf("could not listen on port %v: %v", config.GatewayPort, err)
-		return finalize
+		return nil, fmt.Errorf("could not listen on port %v: %v", config.GatewayPort, err)
 	}
 
 	blocksPort, err := socket.Listen(fmt.Sprintf("%v:%v", config.Hostname, config.BlockListenerPort))
 	if err != nil {
-		finalize <- fmt.Errorf("could not listen on port %v: %v", config.BlockListenerPort, err)
-		return finalize
+		return nil, fmt.Errorf("could not listen on port %v: %v", config.BlockListenerPort, err)
 	}
 
 	endGateway := make(chan crypto.Token)
@@ -80,18 +79,36 @@ func (n *Node) Run(config Config) chan error {
 	cloned := make(chan bool)
 	pool := make(socket.ConnectionPool)
 
+	adminConnections := make([]Shutdowner, 0)
+
 	// manage incoming connections and block formation
 	go func() {
-		cancel := n.Ctx.Done()
+		defer func() {
+			pool.DropAll()
+			gatewayPort.Close()
+			blocksPort.Close()
+			if listenAdminPort != nil {
+				listenAdminPort.Close()
+			}
+			for _, conn := range gatewayConnections {
+				conn.Shutdown()
+			}
+			for _, conn := range adminConnections {
+				conn.Shutdown()
+			}
+		}()
+		cancel := ctx.Done()
 		for {
 			select {
 			case <-cancel:
-				// todo: return? free which resources?
+				return
 			case token := <-endGateway:
 				delete(gatewayConnections, token)
 			case conn := <-newGateway:
-				gatewayConnections[conn.Token] = conn
-				go WaitForProtocolActions(conn, endGateway, action)
+				if conn != nil {
+					gatewayConnections[conn.Token] = conn
+					go WaitForProtocolActions(conn, endGateway, action)
+				}
 			case proposed := <-action:
 				n.ActionGateway <- proposed
 			case ok := <-cloned:
@@ -141,17 +158,16 @@ func (n *Node) Run(config Config) chan error {
 				go WaitForOutgoingSyncRequest(trustedConn, newBlockListener)
 			} else {
 				slog.Warn("poa outgoing listener error", "error", err)
-				finalize <- fmt.Errorf("could not accept outgoing connection: %v", err)
 				return
 			}
 		}
 	}()
 
 	if config.AdminPort > 0 {
-		listenAdminPort, err := socket.Listen(fmt.Sprintf("%v:%v", config.Hostname, config.AdminPort))
+		var err error
+		listenAdminPort, err = socket.Listen(fmt.Sprintf("%v:%v", config.Hostname, config.AdminPort))
 		if err != nil {
-			finalize <- fmt.Errorf("could not listen on port %v: %v", config.BlockListenerPort, err)
-			return finalize
+			return nil, fmt.Errorf("could not listen on port %v: %v", config.BlockListenerPort, err)
 		}
 		go func() {
 			validator := socket.ValidateSingleConnection(config.Credentials.PublicKey())
@@ -161,13 +177,13 @@ func (n *Node) Run(config Config) chan error {
 					if err != nil {
 						conn.Close()
 					}
+					adminConnections = append(adminConnections, trustedConn)
 					go AdminConnection(trustedConn, config.Firewall)
 				}
 			}
 		}()
 	}
-
-	return finalize
+	return n, nil
 }
 
 // WaitForProtocolActions reads proposed actions from a connection and sends them
@@ -180,19 +196,20 @@ func WaitForProtocolActions(conn *socket.SignedConnection, terminate chan crypto
 			if err != nil {
 				slog.Info("poa WaitForProtocolActions: connection terminated", "connection", err)
 			} else {
-				slog.Info("poa WaitForProtocolActions: invalid action", "connection", conn.Token)
+				slog.Info("poa WaitForProtocolActions: invalid action", "connection", conn.Token, "data", data)
 			}
 			conn.Shutdown()
 			terminate <- conn.Token
 			return
 		}
 		action <- data[1:]
+
 	}
 }
 
 func WaitForOutgoingSyncRequest(conn *socket.SignedConnection, outgoing chan SyncRequest) {
 	data, err := conn.Read()
-	if err != nil || len(data) != 9 || data[0] != chain.MsgSyncRequest {
+	if err != nil || len(data) != 10 || data[0] != chain.MsgSyncRequest {
 		if err != nil {
 			slog.Info("poa WaitForOutgoingSyncRequest: connection terminated", "connection", err)
 		} else {

@@ -16,6 +16,12 @@ func (p ConnectionPool) Add(c *CachedConnection) {
 	p[c.conn.Token] = c
 }
 
+func (p ConnectionPool) DropAll() {
+	for _, conn := range p {
+		conn.Close()
+	}
+}
+
 func (p ConnectionPool) Drop(token crypto.Token) {
 	if conn, ok := p[token]; ok {
 		if conn != nil {

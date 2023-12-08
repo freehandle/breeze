@@ -16,10 +16,13 @@ const (
 
 type ActionStore struct {
 	currentEpoch uint64
+	Live         bool
 	epoch        [][]crypto.Hash
 	data         map[crypto.Hash][]byte
 	reserved     map[crypto.Hash]struct{}
-	Actions      chan []byte
+	Pop          chan []byte
+	Push         chan []byte
+	Epoch        chan uint64
 	hashes       chan hashaction
 }
 
@@ -30,36 +33,95 @@ type hashaction struct {
 
 func NewActionStore(epoch uint64) *ActionStore {
 	store := &ActionStore{
-		data:    make(map[crypto.Hash][]byte),
-		Actions: make(chan []byte),
-		hashes:  make(chan hashaction),
+		Live:     true,
+		data:     make(map[crypto.Hash][]byte),
+		reserved: make(map[crypto.Hash]struct{}),
+		epoch:    make([][]crypto.Hash, 2*MaxActionDelay+1),
+		Pop:      make(chan []byte),
+		Push:     make(chan []byte),
+		Epoch:    make(chan uint64),
+		hashes:   make(chan hashaction),
 	}
-	if epoch < MaxActionDelay {
-		store.epoch = make([][]crypto.Hash, (MaxActionDelay-epoch+1)+MaxActionDelay)
-	} else {
-		store.epoch = make([][]crypto.Hash, 2*MaxActionDelay+1)
+	for n := 0; n < len(store.epoch); n++ {
+		store.epoch[n] = make([]crypto.Hash, 0)
 	}
 	go func() {
+		defer func() {
+			store.Live = false
+			close(store.Pop)
+			close(store.Push)
+			close(store.Epoch)
+		}()
 		for {
-			select {
-			case data, ok := <-store.Actions:
-				if !ok {
-					return
-				}
-				if len(data) > 0 {
-					store.push(data)
-				}
-			case store.Actions <- store.pop():
-			case hash := <-store.hashes:
-				if hash.action == mark {
-					if _, ok := store.data[hash.hash]; ok {
-						store.reserved[hash.hash] = struct{}{}
+			// if store is empty wait for new action
+			if len(store.data) == 0 {
+				select {
+				case epoch, ok := <-store.Epoch:
+					if !ok {
+						return
 					}
-				} else if hash.action == unmark {
-					delete(store.reserved, hash.hash)
-				} else if hash.action == exclude {
-					delete(store.reserved, hash.hash)
-					delete(store.data, hash.hash)
+					store.moveNext(epoch)
+				case data, ok := <-store.Push:
+					if !ok {
+						return
+					}
+					if len(data) > 0 {
+						store.push(data)
+					}
+				}
+
+			} else if len(store.data) == len(store.reserved) {
+				select {
+				case epoch, ok := <-store.Epoch:
+					if !ok {
+						return
+					}
+					store.moveNext(epoch)
+				case data, ok := <-store.Push:
+					if !ok {
+						return
+					}
+					if len(data) > 0 {
+						store.push(data)
+					}
+				case hash := <-store.hashes:
+					if hash.action == mark {
+						if _, ok := store.data[hash.hash]; ok {
+							store.reserved[hash.hash] = struct{}{}
+						}
+					} else if hash.action == unmark {
+						delete(store.reserved, hash.hash)
+					} else if hash.action == exclude {
+						delete(store.reserved, hash.hash)
+						delete(store.data, hash.hash)
+					}
+				}
+			} else {
+				select {
+				case epoch, ok := <-store.Epoch:
+					if !ok {
+						return
+					}
+					store.moveNext(epoch)
+				case store.Pop <- store.pop():
+				case data, ok := <-store.Push:
+					if !ok {
+						return
+					}
+					if len(data) > 0 {
+						store.push(data)
+					}
+				case hash := <-store.hashes:
+					if hash.action == mark {
+						if _, ok := store.data[hash.hash]; ok {
+							store.reserved[hash.hash] = struct{}{}
+						}
+					} else if hash.action == unmark {
+						delete(store.reserved, hash.hash)
+					} else if hash.action == exclude {
+						delete(store.reserved, hash.hash)
+						delete(store.data, hash.hash)
+					}
 				}
 			}
 		}
@@ -105,11 +167,19 @@ func (a *ActionStore) pop() []byte {
 
 func (a *ActionStore) push(data []byte) {
 	epoch := actions.GetEpochFromByteArray(data)
-	if epoch == 0 || epoch < a.currentEpoch-MaxActionDelay || epoch > a.currentEpoch+MaxActionDelay {
+	if epoch == 0 || epoch+MaxActionDelay < a.currentEpoch || epoch > a.currentEpoch+MaxActionDelay {
 		return
 	}
-	bucket := int(epoch - a.currentEpoch - MaxActionDelay)
+	firstBucketEpoch := 0
+	if a.currentEpoch > MaxActionDelay {
+		firstBucketEpoch = int(a.currentEpoch) - MaxActionDelay
+	}
+	bucket := int(epoch) - firstBucketEpoch
 	hash := crypto.Hasher(data)
+	if bucket < 0 || bucket > 2*MaxActionDelay {
+		slog.Error("ActionStore: bucket out of range", "bucket", bucket, "epoch", epoch, "current", a.currentEpoch)
+		return
+	}
 	a.epoch[bucket] = append(a.epoch[bucket], hash)
 	a.data[hash] = data
 }
@@ -119,8 +189,7 @@ func (a *ActionStore) moveNext(epoch uint64) {
 		slog.Error("ActionStore: non sequential epoch update", "proposed", epoch, "current", a.currentEpoch)
 	}
 	a.currentEpoch = epoch
-
-	if epoch-MaxActionDelay-1 > 0 {
+	if epoch > MaxActionDelay {
 		for _, hash := range a.epoch[0] {
 			delete(a.data, hash)
 		}
