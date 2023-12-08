@@ -11,18 +11,22 @@ const (
 	BlockActionOffset = 32 + 8 + 8 + 32 + 32 + 8
 )
 
+// BLockBuilder is the primitive to mint a new block. It containes the block
+// header, the action array and an action validator.
 type BlockBuilder struct {
 	Header    BlockHeader
 	Actions   *ActionArray
 	Validator *state.MutatingState
 }
 
+// TODO: is this used??
 func (b *BlockBuilder) Serialize() []byte {
 	bytes := b.Header.Serialize()
 	bytes = append(bytes, b.Actions.Serialize()...)
 	return bytes
 }
 
+// TODO: is this used?
 func (b *BlockBuilder) Clone() *BlockBuilder {
 	return &BlockBuilder{
 		Header:  b.Header,
@@ -30,12 +34,14 @@ func (b *BlockBuilder) Clone() *BlockBuilder {
 	}
 }
 
+// TODO: is this used?
 func (b *BlockBuilder) Hash() crypto.Hash {
 	hashHead := crypto.Hasher(b.Header.Serialize())
 	hashActions := b.Actions.Hash()
 	return crypto.Hasher(append(hashHead[:], hashActions[:]...))
 }
 
+// Validates new action and appends it to the action array if valid.
 func (b *BlockBuilder) Validate(data []byte) bool {
 	if b.Validator.Validate(data) {
 		b.Actions.Append(data)
@@ -44,6 +50,7 @@ func (b *BlockBuilder) Validate(data []byte) bool {
 	return false
 }
 
+// Returns a pointer to a SeledBlock properly signed by the provided credentials.
 func (b *BlockBuilder) Seal(credentials crypto.PrivateKey) *SealedBlock {
 	hash := b.Hash()
 	signature := credentials.Sign(hash[:])
@@ -59,6 +66,7 @@ func (b *BlockBuilder) Seal(credentials crypto.PrivateKey) *SealedBlock {
 	}
 }
 
+// Appends a provided seal to the blockbuild and returns a pointer to a SealedBlock.
 func (b *BlockBuilder) ImprintSeal(seal BlockSeal) *SealedBlock {
 	return &SealedBlock{
 		Header:  b.Header,
@@ -67,6 +75,10 @@ func (b *BlockBuilder) ImprintSeal(seal BlockSeal) *SealedBlock {
 	}
 }
 
+// SealedBlock  is the sealed version of a block. It should be considered final
+// and immutable, but not yet incorporated into the block chain. It consists of
+// a block header, an action array and a block seal with a valid signature
+// against the block creator expressed in the block header.
 type SealedBlock struct {
 	Header    BlockHeader
 	Actions   *ActionArray
@@ -74,6 +86,8 @@ type SealedBlock struct {
 	Mutations *state.Mutations
 }
 
+// ParseSealedBlock parses a byte array into a SealedBlock. Returns nil if the
+// byte array is not a valid SealedBlock.
 func ParseSealedBlock(data []byte) *SealedBlock {
 	var block SealedBlock
 	header, position := parseHeaderBlockHeaderPosition(data, 0)
@@ -91,6 +105,7 @@ func ParseSealedBlock(data []byte) *SealedBlock {
 	return &block
 }
 
+// Serialize serializes a SealedBlock to a byte array.
 func (s *SealedBlock) Serialize() []byte {
 	bytes := s.Header.Serialize()
 	bytes = append(bytes, s.Actions.Serialize()...)
@@ -98,6 +113,15 @@ func (s *SealedBlock) Serialize() []byte {
 	return bytes
 }
 
+// Revalidate checks if the actions of a sealed block remains valid according to
+// a more recent state. Hashes of invalidated actions are added to the block
+// commit. The block chain shoul ignore those invalidated actions in order to
+// advance the state of the chain. Nonetheless the invalidated actions are not
+// purged from the action array in the CommitBlock.
+// Commit is an individual action of a node and not subject to a committe for
+// further validation and consensus formation. Users receiving a commit block
+// must decide if the trust the publisher or if theuy should independtly check
+// the validity of the commit metadata.
 func (c *SealedBlock) Revalidate(validator *state.MutatingState, publish crypto.PrivateKey) *CommitBlock {
 	invalidated := make([]crypto.Hash, 0)
 	feesCollected := c.Seal.FeesCollected
@@ -137,6 +161,8 @@ type CommitBlock struct {
 	mutations *state.Mutations
 }
 
+// Returns a pointer to a SealedBlock with the same header, action array and
+// seal as the CommitBlock.
 func (c *CommitBlock) Sealed() *SealedBlock {
 	return &SealedBlock{
 		Header:  c.Header,
@@ -145,6 +171,8 @@ func (c *CommitBlock) Sealed() *SealedBlock {
 	}
 }
 
+// ParseCommitBlock parses a byte array into a CommitBlock. Returns nil if the
+// byte array is not a valid CommitBlock.
 func ParseCommitBlock(data []byte) *CommitBlock {
 	var block CommitBlock
 	header, position := parseHeaderBlockHeaderPosition(data, 0)
@@ -165,6 +193,7 @@ func ParseCommitBlock(data []byte) *CommitBlock {
 	return &block
 }
 
+// Serialize serializes a CommitBlock to a byte array without signature.
 func (b *CommitBlock) serializeForPublish() []byte {
 	bytes := b.Header.Serialize()
 	bytes = append(bytes, b.Actions.Serialize()...)
@@ -173,12 +202,15 @@ func (b *CommitBlock) serializeForPublish() []byte {
 	return bytes
 }
 
+// Serialize serializes a CommitBlock to a byte array.
 func (b *CommitBlock) Serialize() []byte {
 	bytes := b.serializeForPublish()
 	util.PutSignature(b.Commit.PublishSign, &bytes)
 	return bytes
 }
 
+// Returns byte byte array of only those actions not invalidated by the block
+// commit structure.
 func (b *CommitBlock) GetValidActions() [][]byte {
 	actions := make([][]byte, 0)
 	for n := 0; n < b.Actions.Len(); n++ {

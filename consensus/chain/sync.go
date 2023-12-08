@@ -7,6 +7,13 @@ import (
 	"github.com/freehandle/breeze/util"
 )
 
+// SyncBlocksClient answers a request for previously minted blocks from a node
+// from a cached connection. If it is not in possession of information that old,
+// it will senf a MsgSyncError message and close the connection.
+// Otherwise, it will send the requested blocks either as sealed blocks or as
+// committed blocks. The current building block, if any, must be served by the
+// validating node itself. If marks the connection as ready at the end of the
+// sync job.
 func (c *Blockchain) SyncBlocksServer(conn *socket.CachedConnection, epoch uint64) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -43,6 +50,9 @@ func (c *Blockchain) SyncBlocksServer(conn *socket.CachedConnection, epoch uint6
 	conn.Ready()
 }
 
+// SyncBlocksClient answers a request for the state of the system at the last
+// recorded checksum. It sends the state of the wallets and the state of the
+// deposits. It then requests a block sync from that epoch forward.
 func (c *Blockchain) SyncState(conn *socket.CachedConnection) {
 	c.mu.Lock()
 	wallet := c.Checksum.State.Wallets.Bytes()

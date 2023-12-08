@@ -71,7 +71,7 @@ const BlockInterval = time.Second
 func NewGenesisNode(ctx context.Context, wallet crypto.PrivateKey, config ValidatorConfig) {
 	token := config.credentials.PublicKey()
 	node := &SwellNode{
-		blockchain:  chain.BlockchainFromGenesisState(wallet, config.walletPath, config.swellConfig.NetworkHash, config.swellConfig.BlockInterval),
+		blockchain:  chain.BlockchainFromGenesisState(wallet, config.walletPath, config.swellConfig.NetworkHash, config.swellConfig.BlockInterval, config.swellConfig.ChecksumWindow),
 		actions:     store.NewActionStore(1),
 		credentials: config.credentials,
 		validators: &ChecksumWindowValidators{

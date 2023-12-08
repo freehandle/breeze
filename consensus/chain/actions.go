@@ -6,12 +6,14 @@ import (
 )
 
 // Memory block is a simplified version of block containing only actions bytes
-// stored in a sequential byte slice.
+// stored in a sequential byte slice. The hash of an action array is the hash
+// of the underlying byte slice.
 type ActionArray struct {
 	actions []int // end of n-th instruction
 	data    []byte
 }
 
+// NewActionArray returns a pointer to a new empty action array.
 func NewActionArray() *ActionArray {
 	return &ActionArray{
 		actions: make([]int, 0),
@@ -19,6 +21,8 @@ func NewActionArray() *ActionArray {
 	}
 }
 
+// ParseAction parses byte array to an action array. The underlying byte array
+// must follow the format of a util.PutActionsArray.
 func ParseAction(data []byte, position int) (*ActionArray, int) {
 	actions, position := util.ParseActionsArray(data, position)
 	if len(actions) == 0 {
@@ -37,6 +41,8 @@ func ParseAction(data []byte, position int) (*ActionArray, int) {
 	return actionArray, position
 }
 
+// Serialize serializes an action array to a byte array. The underlying byte
+// layout follows util.PutActionsArray
 func (b *ActionArray) Serialize() []byte {
 	actions := make([][]byte, len(b.actions))
 	for n := 0; n < len(b.actions); n++ {
@@ -47,6 +53,7 @@ func (b *ActionArray) Serialize() []byte {
 	return bytes
 }
 
+// Hash returns the hash of the underlying byte slice.
 func (b *ActionArray) Hash() crypto.Hash {
 	if len(b.actions) == 0 {
 		return crypto.ZeroValueHash
@@ -54,10 +61,12 @@ func (b *ActionArray) Hash() crypto.Hash {
 	return crypto.Hasher(b.data)
 }
 
+// Len returns the number of actions in the array.
 func (b *ActionArray) Len() int {
 	return len(b.actions)
 }
 
+// Get returns the n-th action in the array. Returns nil if n is out of range.
 func (b *ActionArray) Get(n int) []byte {
 	if n >= len(b.actions) || n < 0 {
 		return nil
@@ -70,11 +79,13 @@ func (b *ActionArray) Get(n int) []byte {
 	return b.data[starts:ends]
 }
 
+// Append appends an action to the end of the array.
 func (b *ActionArray) Append(data []byte) {
 	b.data = append(b.data, data...)
 	b.actions = append(b.actions, len(b.data))
 }
 
+// Clone returns a deep copy of the action array.
 func (m *ActionArray) Clone() *ActionArray {
 	data := make([]byte, len(m.data))
 	copy(data, m.data)

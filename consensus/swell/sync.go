@@ -41,7 +41,7 @@ func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync soc
 	}
 
 	node := &SwellNode{
-		blockchain:  chain.BlockchainFromChecksumState(checksum, clock, config.credentials, config.swellConfig.NetworkHash, config.swellConfig.BlockInterval),
+		blockchain:  chain.BlockchainFromChecksumState(checksum, clock, config.credentials, config.swellConfig.NetworkHash, config.swellConfig.BlockInterval, config.swellConfig.ChecksumWindow),
 		actions:     config.actions,
 		credentials: config.credentials,
 		config:      config.swellConfig,

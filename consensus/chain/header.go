@@ -8,6 +8,14 @@ import (
 	"github.com/freehandle/breeze/util"
 )
 
+// BlockHeader communicates the intention of a validator to mint a new block.
+// It contains the network hash, the epoch, the checkpoint <= epoch - 1 against
+// which the validator will check the validity of proposed actions, the hash of
+// the block associated to that checkpoint, the validator's token, the UTC time
+// as perceived by the validator at the submission of the header, optional
+// evidence of previous infringiments from other nodes of the swell protocol,
+// and optional checksum statments as received by the validator from cadidate
+// validating nodes for the next checksum window.
 type BlockHeader struct {
 	NetworkHash    crypto.Hash
 	Epoch          uint64
@@ -19,6 +27,8 @@ type BlockHeader struct {
 	Candidate      []*ChecksumStatement // Validator candidate evidence for state checksum
 }
 
+// Clone returns a copy of the block header without duplicates and checksum
+// statements.
 func (b BlockHeader) Clone() BlockHeader {
 	return BlockHeader{
 		NetworkHash:    b.NetworkHash,
@@ -30,6 +40,7 @@ func (b BlockHeader) Clone() BlockHeader {
 	}
 }
 
+// Serialize serializes a block header to a byte slice.
 func (b BlockHeader) Serialize() []byte {
 	bytes := make([]byte, 0)
 	util.PutHash(b.NetworkHash, &bytes)
@@ -46,6 +57,8 @@ func (b BlockHeader) Serialize() []byte {
 	return bytes
 }
 
+// ParseBlockHeader parses a byte slice to a block header. Return nil if the
+// byte slice does not contain a valid block header.
 func ParseBlockHeader(data []byte) *BlockHeader {
 	header, position := parseHeaderBlockHeaderPosition(data, 0)
 	if position != len(data) {
@@ -54,6 +67,9 @@ func ParseBlockHeader(data []byte) *BlockHeader {
 	return header
 }
 
+// ParseBlockHeaderPosition parses a block header in the middle of a byte slice
+// and returns the parsed block header and the position at the end of the header
+// bytes.
 func parseHeaderBlockHeaderPosition(data []byte, position int) (*BlockHeader, int) {
 	var block BlockHeader
 	block.NetworkHash, position = util.ParseHash(data, position)
@@ -71,6 +87,11 @@ func parseHeaderBlockHeaderPosition(data []byte, position int) (*BlockHeader, in
 	return &block, position
 }
 
+// Seal for a proposed block. It contains the hash of the proposed block, the
+// fees collected by the validator, the signature of the proposer of the block,
+// and the consensus ballots for the block. Consensus information is gathered
+// individually by each validator by the bft rules. Anyone in possession of
+// this can attest to the validity of the bft consensus algorithm.
 type BlockSeal struct {
 	Hash          crypto.Hash
 	FeesCollected uint64
@@ -78,13 +99,16 @@ type BlockSeal struct {
 	Consensus     []*bft.Ballot
 }
 
+// Clone returns a copy of the block seal without consensus information.
 func (b BlockSeal) Clone() BlockSeal {
 	return BlockSeal{
 		Hash:          b.Hash,
+		FeesCollected: b.FeesCollected,
 		SealSignature: b.SealSignature,
 	}
 }
 
+// Serialize serializes a block seal to a byte slice.
 func (b BlockSeal) Serialize() []byte {
 	bytes := make([]byte, 0)
 	util.PutHash(b.Hash, &bytes)
@@ -97,6 +121,8 @@ func (b BlockSeal) Serialize() []byte {
 	return bytes
 }
 
+// ParseBlockSeal parses a byte slice to a block seal. Return nil if the byte
+// slice does not contain a valid block seal.
 func ParseBlockSeal(data []byte) *BlockSeal {
 	block, position := parseBlockSealPosition(data, 0)
 	if position != len(data) {
@@ -105,6 +131,8 @@ func ParseBlockSeal(data []byte) *BlockSeal {
 	return block
 }
 
+// ParseBlockSealPosition parses a block seal in the middle of a byte slice and
+// returns the parsed block seal and the position at the end of the seal bytes.
 func parseBlockSealPosition(data []byte, position int) (*BlockSeal, int) {
 	var block BlockSeal
 	block.Hash, position = util.ParseHash(data, position)
@@ -118,6 +146,18 @@ func parseBlockSealPosition(data []byte, position int) (*BlockSeal, int) {
 	return &block, position
 }
 
+// BlockCommit is the final structure of a block. Every validating node must
+// build a block commit structure for every consensual sealed block it receives.
+// Blocks are commit in sequence. Sealed block for epoch t can only be committed
+// if block for epoch t - 1 has been committed. At the commit process a node
+// must revalidate all the proposed actions against the state at the previous
+// block. Hashes of invalidated actions are groupéd in the block commit. The
+// ammount of fees collected by the proposer of the block is also recalculated
+// to exclude the fees of invalidated or previously incorporated actions.
+// Every node must publish its own perception of the block commit structure.
+// If the consensys algorithm is working, every node will have the same
+// perception of reality. The swell protocol does not anticipate penalties for
+// faulty commits.
 type BlockCommit struct {
 	Invalidated   []crypto.Hash
 	FeesCollected uint64
@@ -125,6 +165,7 @@ type BlockCommit struct {
 	PublishSign   crypto.Signature
 }
 
+// Serialize serializes a block commit to a byte slice without signature.
 func (b BlockCommit) serializeToSign() []byte {
 	bytes := make([]byte, 0)
 	util.PutHashArray(b.Invalidated, &bytes)
@@ -133,12 +174,15 @@ func (b BlockCommit) serializeToSign() []byte {
 	return bytes
 }
 
+// Serialize serializes a block commit to a byte slice.
 func (b BlockCommit) Serialize() []byte {
 	bytes := b.serializeToSign()
 	util.PutSignature(b.PublishSign, &bytes)
 	return bytes
 }
 
+// ParseBlockCommit parses a byte slice to a block commit. Return nil if the
+// byte slice does not contain a valid block commit.
 func ParseBlockCommit(data []byte) *BlockCommit {
 	block, position := parseBlockCommitPosition(data, 0)
 	if position != len(data) {
@@ -147,6 +191,9 @@ func ParseBlockCommit(data []byte) *BlockCommit {
 	return block
 }
 
+// ParseBlockCommitPosition parses a block commit in the middle of a byte slice
+// and returns the parsed block commit and the position at the end of the commit
+// bytes.
 func parseBlockCommitPosition(data []byte, position int) (*BlockCommit, int) {
 	var block BlockCommit
 	block.Invalidated, position = util.ParseHashArray(data, position)

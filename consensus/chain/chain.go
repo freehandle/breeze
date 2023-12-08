@@ -1,3 +1,23 @@
+/*
+	chain provides blockchain interface
+
+Rules for the chain mechanism:
+
+ 1. blocks are proposed for a certain epoch and against a certain checkpoint
+    prior to that epoch.
+ 2. the block associated to a checkpoint must be sealed, otherwise it is not a
+    valid checkpoint. sealed blocks cannot append new actions. They are not
+    considerer final because certain actions can be removed by the commit phase.
+ 3. actions for the block are temporarily validated against the state derived
+    at the checkpoint epoch.
+ 4. blocks are sealed, a hash is calculated, and the hash is signed by the
+    publisher of the block. the commit phase is done by every node
+ 5. blocks are commited with all transactions validated with the checkpoint of
+    the epoch immediately before the block epoch. Actions that were approved as
+    validated by the original checkpoint are marked as invalidated by the commit
+    instruction.
+ 6. state the system can be synced to another node.
+*/
 package chain
 
 import (
@@ -10,8 +30,15 @@ import (
 	"github.com/freehandle/breeze/protocol/state"
 )
 
+// block chain should keep as many KeepLastNBlocks blocks in memory for fast
+// sync jobs and for recovery purposes.
 const KeepLastNBlocks = 100
 
+// Checksum is a snapshot of the state of the system at periodic epochs. It
+// contains the epoch, the state of the chain at that epoch, the hash of the
+// last sealed block at that epoch and a checksum hash for the state of the
+// system. Only validators which agree and provide evidence of the same state
+// checksum are allowed to participate in the next checksum window.
 type Checksum struct {
 	Epoch         uint64
 	State         *state.State
@@ -19,11 +46,16 @@ type Checksum struct {
 	Hash          crypto.Hash
 }
 
+// The last perceived epoch-to-clock synchronization in possession of the node.
+// The first synchronization is at genesis time. If there is no downtime,
+// this synchronization remains in place.
 type ClockSyncronization struct {
 	Epoch     uint64
 	TimeStamp time.Time
 }
 
+// Blockchain is the main data structure for the breeze network. It contains the
+// state of the system at the last commit and the sealed uncommited blocks.
 type Blockchain struct {
 	mu              sync.Mutex
 	NetworkHash     crypto.Hash
@@ -38,9 +70,27 @@ type Blockchain struct {
 	Clock           ClockSyncronization
 	Punishment      map[crypto.Token]uint64
 	BlockInterval   time.Duration
+	ChecksumWindow  int
 }
 
-func BlockchainFromGenesisState(credentials crypto.PrivateKey, walletPath string, hash crypto.Hash, interval time.Duration) *Blockchain {
+// IsChecksumEpoch returns true if the provided epoch is a checksum epoch and
+// the checksum is not yet available. It returns false otherwise.
+func (b *Blockchain) IsChecksumCommit() bool {
+	if (int(b.LastCommitEpoch) % b.ChecksumWindow) == (b.ChecksumWindow / 2) {
+		epoch := int(b.LastCommitEpoch)/b.ChecksumWindow + b.ChecksumWindow/2
+		if int(b.Checksum.Epoch) != epoch {
+			return true
+		}
+	}
+	return false
+}
+
+// BlockchainFromGenesisState creates a new blockchain from a genesis state. It
+// creates the genesis state and depoits the initial tokens on the credentials
+// wallet. Credentials is also accredited as a validator for the first checksum
+// window. hash is the network hash. interval is the block interval. checksum
+// window is the number of epochs between checksums.
+func BlockchainFromGenesisState(credentials crypto.PrivateKey, walletPath string, hash crypto.Hash, interval time.Duration, cehcksumWindow int) *Blockchain {
 	genesis := state.NewGenesisStateWithToken(credentials.PublicKey(), walletPath)
 	if genesis == nil {
 		return nil
@@ -64,21 +114,29 @@ func BlockchainFromGenesisState(credentials crypto.PrivateKey, walletPath string
 			Epoch:     0,
 			TimeStamp: time.Now(),
 		},
-		BlockInterval: interval,
+		BlockInterval:  interval,
+		ChecksumWindow: cehcksumWindow,
 	}
 }
 
+// TimestampBlock returns the time at which a block with the provided epoch
+// will start. It is calculated from the last clock synchronization and the
+// block interval.
 func (b *Blockchain) TimestampBlock(epoch uint64) time.Time {
 	delta := time.Duration(epoch-b.Clock.Epoch) * b.BlockInterval
 	return b.Clock.TimeStamp.Add(delta)
 }
 
+// Timer returns a timer that will fire at the time at which a block with the
+// provided epoch will start. It is calculated from the last clock
 func (b *Blockchain) Timer(epoch uint64) *time.Timer {
 	delta := time.Until(b.TimestampBlock(epoch))
 	return time.NewTimer(delta)
 }
 
-func BlockchainFromChecksumState(c *Checksum, clock ClockSyncronization, credentials crypto.PrivateKey, networkHash crypto.Hash, interval time.Duration) *Blockchain {
+// BlockchainFromChecksumState recreates a blockchain from a given checksum
+// state. Checksum state typically comes from a peer node sync job.
+func BlockchainFromChecksumState(c *Checksum, clock ClockSyncronization, credentials crypto.PrivateKey, networkHash crypto.Hash, interval time.Duration, checksumWindow int) *Blockchain {
 	return &Blockchain{
 		mu:              sync.Mutex{},
 		NetworkHash:     networkHash,
@@ -91,9 +149,12 @@ func BlockchainFromChecksumState(c *Checksum, clock ClockSyncronization, credent
 		Checksum:        c,
 		Clock:           clock,
 		BlockInterval:   interval,
+		ChecksumWindow:  checksumWindow,
 	}
 }
 
+// NextBlock returns a block header for the next block to be proposed. It
+// retrieves the checkpoint from the last commit state.
 func (c *Blockchain) NextBlock(epoch uint64) *BlockHeader {
 	if epoch <= c.LastCommitEpoch {
 		slog.Info("Blockchain: NextBlock: epoch already commited")
@@ -115,6 +176,9 @@ func (c *Blockchain) NextBlock(epoch uint64) *BlockHeader {
 	}
 }
 
+// CheckpointValidator returns a block builder for a block that will validate
+// actions proposed. It returns nil if the proposed epoch in the header is for
+// a period prior to the last commit epoch.
 func (c *Blockchain) CheckpointValidator(header BlockHeader) *BlockBuilder {
 	if header.Epoch <= c.LastCommitEpoch {
 		slog.Warn("CheckpointValidator: cannot replace commited block outside recovery mode")
@@ -151,6 +215,14 @@ func (c *Blockchain) CheckpointValidator(header BlockHeader) *BlockBuilder {
 	return &builder
 }
 
+// AddSealedBlock adds a sealed block to the blockchain. If the added block can
+// be commit it is automatically committed and subsequent sealed blocks are
+// committed as well. The committ machanism will trigger a checksum job if any
+// epoch matches the checksum window. If not committed the block is kept as a
+// sealed block. Sealed block are expected to have consensus evidence.
+// AddSealedBlock does not check for consensus evidence, or valid signature. It
+// is the reponsability of the caller to ensure that the sealed block has all
+// necessary and valid information within it.
 func (c *Blockchain) AddSealedBlock(sealed *SealedBlock) {
 	if sealed == nil {
 		return
@@ -171,13 +243,23 @@ func (c *Blockchain) AddSealedBlock(sealed *SealedBlock) {
 	}
 }
 
+// CommitAll commits all sequential sealed blocks in the blockchain following a
+// last commit epoch. If stops the commit chain if the commit epoch is a
+// checksum commit epoch. It is the responsibility of the caller to ensure that
+// the checksum job request is called.
 func (c *Blockchain) CommitAll() {
 	for {
+		if c.IsChecksumCommit() {
+			return
+		}
 		exists := false
 		for _, sealed := range c.SealedBlocks {
 			if sealed.Header.Epoch == c.LastCommitEpoch+1 {
 				exists = true
 				c.CommitBlock(sealed.Header.Epoch)
+				if c.IsChecksumCommit() {
+					return
+				}
 				break
 			}
 		}
@@ -187,6 +269,11 @@ func (c *Blockchain) CommitAll() {
 	}
 }
 
+// CommitBlock commits a sealed block to the blockchain. It returns true if the
+// block was successfully committed. It returns false if the block was not
+// committed. It is not committed if the block epoch is not sequential to the
+// last commit epoch, if the block epoch is already committed, or if the block
+// epoch is not found in the sealed blocks.
 func (c *Blockchain) CommitBlock(blockEpoch uint64) bool {
 	defer func() {
 		if r := recover(); r != nil {
@@ -223,6 +310,9 @@ func (c *Blockchain) CommitBlock(blockEpoch uint64) bool {
 	return true
 }
 
+// Rollover rolls over the blockchain to a previous epoch after the last commit
+// epoch. It erases any sealed block. It returns an error if the epoch is before
+// the last commit epoch.
 func (c *Blockchain) Rollover(epoch uint64) error {
 	defer func() {
 		if r := recover(); r != nil {
@@ -245,6 +335,9 @@ func (c *Blockchain) Rollover(epoch uint64) error {
 	return nil
 }
 
+// Recovery rolls over the blockchain to a previous epoch before the last commit
+// but after the last checksum epoch. It erases any sealed block or commit block
+// and recalculates the state of the chain at the new epoch.
 func (c *Blockchain) Recovery(epoch uint64) error {
 	defer func() {
 		if r := recover(); r != nil {

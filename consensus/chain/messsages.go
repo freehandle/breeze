@@ -5,6 +5,7 @@ import (
 	"github.com/freehandle/breeze/util"
 )
 
+// TODO: this must be revised
 const (
 	MsgBlock               byte = iota // breeze protocol new block with heder
 	MsgAction                          // sinsgle action

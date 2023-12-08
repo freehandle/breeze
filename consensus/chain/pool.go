@@ -2,17 +2,19 @@ package chain
 
 import "github.com/freehandle/breeze/crypto"
 
-const MaxProtocolEpoch = 100
-
+// IncorporatedActions is a data structure that keeps track of the actions
+// incorporated in the blockchain. It is used to prevent the same action to be
 type IncorporatedActions struct {
-	CurrentEpoch uint64
-	incorporated map[uint64]map[crypto.Hash]uint64
+	CurrentEpoch     uint64
+	incorporated     map[uint64]map[crypto.Hash]uint64
+	maxProtocolEpoch uint64
 }
 
-func NewIncorporatedActions(epoch uint64) *IncorporatedActions {
+func NewIncorporatedActions(epoch, MaxProtocolEpoch uint64) *IncorporatedActions {
 	return &IncorporatedActions{
-		CurrentEpoch: epoch,
-		incorporated: make(map[uint64]map[crypto.Hash]uint64),
+		CurrentEpoch:     epoch,
+		incorporated:     make(map[uint64]map[crypto.Hash]uint64),
+		maxProtocolEpoch: MaxProtocolEpoch,
 	}
 }
 
@@ -33,6 +35,6 @@ func (ia *IncorporatedActions) IsNew(hash crypto.Hash, epoch uint64, checkpoint 
 }
 
 func (ia *IncorporatedActions) MoveForward() {
-	delete(ia.incorporated, ia.CurrentEpoch-MaxProtocolEpoch)
+	delete(ia.incorporated, ia.CurrentEpoch-ia.maxProtocolEpoch)
 	ia.CurrentEpoch += 1
 }
