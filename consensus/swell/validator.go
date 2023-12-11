@@ -13,6 +13,12 @@ import (
 	"github.com/freehandle/breeze/util"
 )
 
+// RunValidatingNode engine runs the underlying swell node as a validating node.
+// This means that it is receiving blocks throught the gossip network of
+// validators and at those assigned epochs joins the consensus committes over
+// the hash of the block. Honest validators should have a relay network somewhat
+// open so that others can send actions to the node and listen to newly minted
+// blocks.
 func (node *SwellNode) RunValidatingNode(ctx context.Context, committee *ChecksumWindowValidatorPool, window int) {
 
 	windowStartEpoch := uint64(window*node.config.ChecksumWindow + 1)
@@ -87,6 +93,8 @@ func (node *SwellNode) RunValidatingNode(ctx context.Context, committee *Checksu
 	}()
 }
 
+// IsPoolMember returns true if the node is a member of the current consensus
+// committe for the given epoch.
 func (c *SwellNode) IsPoolMember(epoch uint64) bool {
 	token := c.credentials.PublicKey()
 	windowStart := (int(epoch)/c.config.ChecksumWindow)*c.config.ChecksumWindow + 1
@@ -112,7 +120,7 @@ func (node *SwellNode) RunEpoch(epoch uint64, network *ChecksumWindowValidatorPo
 		Order:   make([]crypto.Token, 0),
 	}
 	peers := make([]socket.CommitteeMember, 0)
-	for i := 0; i < MaxPoolSize; i++ {
+	for i := 0; i < node.config.MaxPoolSize; i++ {
 		token := node.validators.order[(leaderCount+i)%len(node.validators.order)]
 		weight := node.validators.weights[token]
 		if weight == 0 {
@@ -149,6 +157,9 @@ func (node *SwellNode) RunEpoch(epoch uint64, network *ChecksumWindowValidatorPo
 	}()
 }
 
+// BuildSoloBLock builds a block in the case where the node is the sole partipant
+// in the validating network. In this case all the extra burden can be eliminated
+// and the node can build, seal, commit and broadcast a block in a single step.
 func (node *SwellNode) BuildSoloBLock(epoch uint64) bool {
 	timeout := time.NewTimer(980 * time.Millisecond)
 	header := node.blockchain.NextBlock(epoch)
@@ -177,6 +188,10 @@ func (node *SwellNode) BuildSoloBLock(epoch uint64) bool {
 	}
 }
 
+// BuildBlock build a new block according to the available state of the swell
+// node at the calling of this method. The block is broadcasted to the gossip
+// network and the pool consensus committee is launched. Once terminated the
+// node cast a proposal for the given hash on the pool network.
 func (node *SwellNode) BuildBlock(epoch uint64, network *ChecksumWindowValidatorPool, pool *bft.Pooling) bool {
 	timeout := time.NewTimer(980 * time.Millisecond)
 	header := node.blockchain.NextBlock(epoch)
@@ -220,6 +235,12 @@ func (node *SwellNode) BuildBlock(epoch uint64, network *ChecksumWindowValidator
 	return true
 }
 
+// ListenToBlock listens to the block events from the gossip network and upon
+// receiving a swal informs the pool consensus committee about the hash of the
+// proposed block. If the pool returns a valid consensus the block is added as
+// a sealed block to the node. In case the swell node is not in posession of a
+// block with the consensus hash it tries to get that block from other nodes
+// of the gossip network.
 func (node *SwellNode) ListenToBlock(leader *socket.BufferedChannel, others []*socket.BufferedChannel, pool *bft.Pooling) bool {
 	var sealed *chain.SealedBlock
 	go func() {

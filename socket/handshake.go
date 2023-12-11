@@ -93,6 +93,8 @@ func performClientHandShake(conn net.Conn, prvKey crypto.PrivateKey, remotePub c
 	}, nil
 }
 
+// PromoteConnection promotes a connection to a signed connection. It performs
+// the handshake and returns a SignedConnection if the handshake is successful.
 func PromoteConnection(conn net.Conn, prvKey crypto.PrivateKey, validator ValidateConnection) (*SignedConnection, error) {
 	// read client token, and random nopnce
 	resp, err := readhs(conn)

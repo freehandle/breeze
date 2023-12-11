@@ -8,6 +8,7 @@ import (
 	"github.com/freehandle/breeze/util"
 )
 
+// Admin messages type enum
 const (
 	MsgAddGateway byte = iota
 	MsgRemoveGateway
@@ -16,6 +17,7 @@ const (
 	MsgUnkown = 255
 )
 
+// AdminMsgType returns the type of the admin message
 func AdminMsgType(msg []byte) byte {
 	if len(msg) < 9 || msg[8] > MsgRemoveBlocklistener {
 		return MsgUnkown
@@ -23,6 +25,8 @@ func AdminMsgType(msg []byte) byte {
 	return msg[8]
 }
 
+// ParseTokenMsg parses a message of the form [uint64][token] and returns the
+// number and the token.
 func ParseTokenMsg(msg []byte) (uint64, crypto.Token) {
 	if len(msg) < 1 {
 		return 0, crypto.ZeroToken
@@ -32,6 +36,7 @@ func ParseTokenMsg(msg []byte) (uint64, crypto.Token) {
 	return count, token
 }
 
+// Response returns a response message of the form [uint64][bool] where the
 func Response(count uint64, ok bool) []byte {
 	bytes := util.Uint64ToBytes(count)
 	if ok {

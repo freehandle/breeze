@@ -1,3 +1,24 @@
+/*
+Package actions implements the actions of the Breeze protocol.
+
+Within Breeze thre are four types of actions:
+
+1. Transfer: A transfer action is used to transfer tokens from one account to
+one or more other accounts. A transfer action is signed by the sender account.
+2. Deposit: A deposit action is used to deposit tokens as guarantee for
+participating in the consensus.
+3. Withdraw: A withdraw action is used to withdraw tokens from the consensus.
+4. Void: A void action is general purpose action that can intends to use
+the Breeze protocol for the basic purpose of an action gateway for more
+specialized protocols.
+
+actions package implements the serialization and deserialization of the
+mentioned actions. And provides basic interface to sign actions and verify
+signatures.
+
+In Breeze wallet/token are used interchangeably. A wallet is nothing but a
+public key associated to a private key in a Ed25519 elliptic curve cryptography.
+*/
 package actions
 
 import (
@@ -5,6 +26,7 @@ import (
 	"github.com/freehandle/breeze/util"
 )
 
+// Msg Kind >= IUnkown is reserved for future use
 const (
 	IVoid byte = iota
 	ITransfer
@@ -28,6 +50,10 @@ type Payment struct {
 	Credit []Wallet
 }
 
+// Interface common to all actions. Payments results in all deltas in wallets
+// according to the instructions in the action. FeePaid is the fee to be paid
+// by the validator that incorporates the action in a blockchain. Tokens is
+// the list of breeze wallets that are affected in the action.
 type Action interface {
 	Payments() *Payment
 	Serialize() []byte
@@ -37,6 +63,7 @@ type Action interface {
 	Tokens() []crypto.Token
 }
 
+// NewPayment creates a new payment with a debit account and value.
 func NewPayment(debitAcc crypto.Hash, value uint64) *Payment {
 	return &Payment{
 		Debit:  []Wallet{{debitAcc, value}},

@@ -6,7 +6,13 @@ import (
 	"github.com/freehandle/breeze/crypto"
 )
 
-// BufferedChannel buffers read data from a connection
+// BufferedChannel channels data from a signed connection to byte array channel.
+// Data is read from the connection and store in a buffer until it is read from
+// the channel. The channel will block when not data is available. BufferedChannel
+// offers two channels per connection. Data on transit over the main channel is
+// prepended with a zero byte, data on the side channel prepended with a one byte.
+// The structure also offers a Len() method to check the number of bufferred
+// messages in each channel.
 type BufferedChannel struct {
 	Conn      *SignedConnection
 	Live      bool
@@ -18,10 +24,13 @@ type BufferedChannel struct {
 	readSide  chan []byte
 }
 
+// Is returns true if the token of the connection is equal to the given token.
 func (b *BufferedChannel) Is(token crypto.Token) bool {
 	return b.Conn.Token.Equal(token)
 }
 
+// Read reads data from the main channel buffer. If the buffer is empty, it
+// blocks until data is available.
 func (b *BufferedChannel) Read() []byte {
 	b.next <- struct{}{}
 	data, ok := <-b.read
@@ -31,6 +40,8 @@ func (b *BufferedChannel) Read() []byte {
 	return data
 }
 
+// Read reads data from the side channel buffer. If the buffer is empty, it
+// blocks until data is available.
 func (b *BufferedChannel) ReadSide() []byte {
 	b.nextside <- struct{}{}
 	data, ok := <-b.readSide
@@ -40,20 +51,26 @@ func (b *BufferedChannel) ReadSide() []byte {
 	return data
 }
 
+// Len returns the number of messages bufferred in the main channel.
 func (b *BufferedChannel) Len() int {
 	c := make(chan int)
 	b.count <- c
 	return <-c
 }
 
+// Send messages through the main channel. The message is prepended with a zero
+// byte.
 func (b *BufferedChannel) Send(data []byte) {
 	b.Conn.Send(append([]byte{0}, data...))
 }
 
+// Sned messages through the side channel. The message is prepended with a one
+// byte.
 func (b *BufferedChannel) SendSide(data []byte) {
 	b.Conn.Send(append([]byte{1}, data...))
 }
 
+// NewBufferredChannel returns a new BufferedChannel for the given connection.
 func NewBufferredChannel(conn *SignedConnection) *BufferedChannel {
 	buffered := &BufferedChannel{
 		Conn:      conn,
@@ -124,7 +141,7 @@ func NewBufferredChannel(conn *SignedConnection) *BufferedChannel {
 				slog.Info("buffered channel: could not read data", "error", err)
 				buffered.Live = false
 				queue <- nil
-
+				return
 			}
 			queue <- data
 		}

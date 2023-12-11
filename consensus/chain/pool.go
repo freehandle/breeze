@@ -4,6 +4,7 @@ import "github.com/freehandle/breeze/crypto"
 
 // IncorporatedActions is a data structure that keeps track of the actions
 // incorporated in the blockchain. It is used to prevent the same action to be
+// incorporated twice.
 type IncorporatedActions struct {
 	CurrentEpoch     uint64
 	incorporated     map[uint64]map[crypto.Hash]uint64

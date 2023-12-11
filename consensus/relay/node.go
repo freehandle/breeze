@@ -1,3 +1,9 @@
+/*
+Package relay provides an external interface for a validating node.
+The relay opens a port for actions gateway, another port that listen to
+requests to receive block events and a third port for administrative
+purposes for the node.
+*/
 package relay
 
 import (
@@ -17,6 +23,10 @@ type Shutdowner interface {
 	Shutdown()
 }
 
+// Config defines the configuration for a relay node. The firewall defines the
+// authorized connections for the gateway and the block listener. The credentials
+// should be the private key of the validating node. Hostname is "localhost" or
+// empty for internet connections. For test it can be any string.
 type Config struct {
 	GatewayPort       int
 	BlockListenerPort int
@@ -26,6 +36,8 @@ type Config struct {
 	Hostname          string
 }
 
+// NewFireWall returns a new firewall with the authorized gateway and block listener
+// tokens.
 func NewFireWall(authorizedGateway []crypto.Token, autorizedBlockListener []crypto.Token) *Firewall {
 	return &Firewall{
 		AcceptGateway:       socket.NewValidConnections(authorizedGateway),
@@ -34,23 +46,34 @@ func NewFireWall(authorizedGateway []crypto.Token, autorizedBlockListener []cryp
 
 }
 
+// Firewall defines the authorized connections for the gateway and the block listener.
 type Firewall struct {
 	AcceptGateway       *socket.AcceptValidConnections
 	AcceptBlockListener *socket.AcceptValidConnections
 }
 
+// Node defines the external interface for a validating node. ActionGateway
+// channel shoud be read by the validating node to receive proposed actions.
+// BlockEvents channel should be write by the validating node to broadcast block
+// events. SyncRequest channel should be read by the validating node to receive
+// requests for state sync and recenet blocks sync.
 type Node struct {
 	ActionGateway chan []byte      // Sends actions to swell engine
 	BlockEvents   chan []byte      // receive block events from swell engine
 	SyncRequest   chan SyncRequest // sends sync requests to swell engine
 }
 
+// SyncRequest defines a request for state sync and recent blocks sync. Epoch
+// is the first epoch for which the requester needs a block. State is true if
+// the requester needs a state sync.
 type SyncRequest struct {
 	Epoch uint64
 	State bool
 	Conn  *socket.CachedConnection
 }
 
+// Run starts a relay network. It returns a Node and an error. On cancelation
+// of the context, the entire relay network is graciously shutdown.
 func Run(ctx context.Context, config Config) (*Node, error) {
 	n := &Node{
 		ActionGateway: make(chan []byte),
@@ -207,6 +230,9 @@ func WaitForProtocolActions(conn *socket.SignedConnection, terminate chan crypto
 	}
 }
 
+// WaitForOutgoingSyncRequest reads a sync request from a connection and sends
+// it to the sync request channel. If it is not a valid request, if closes the
+// conection and returns without sending anything to outgoing channel.
 func WaitForOutgoingSyncRequest(conn *socket.SignedConnection, outgoing chan SyncRequest) {
 	data, err := conn.Read()
 	if err != nil || len(data) != 10 || data[0] != chain.MsgSyncRequest {
@@ -224,6 +250,10 @@ func WaitForOutgoingSyncRequest(conn *socket.SignedConnection, outgoing chan Syn
 	outgoing <- SyncRequest{Conn: cached, Epoch: epoch, State: state}
 }
 
+// AdminMsgType processes messages received from connection over the admin port.
+// Messages are of the following type:
+// MsgAddGateway, MsgRemoveGateway, MsgAddBlocklistener, MsgRemoveBlocklistener
+// and MsgShutdown.
 func AdminConnection(conn *socket.SignedConnection, firewall *Firewall) {
 	for {
 		msg, err := conn.Read()

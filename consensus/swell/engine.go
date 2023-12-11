@@ -11,20 +11,18 @@ import (
 	"github.com/freehandle/breeze/crypto"
 )
 
+// SwellNetrworkConfiguration defines the parameters for the unerlying crypto
+// network running the swell protocol.
 type SwellNetworkConfiguration struct {
-	NetworkHash      crypto.Hash
-	MaxPoolSize      int
-	MaxCommitteeSize int
-	BlockInterval    time.Duration
-	ChecksumWindow   int
-	Permission       Permission
+	NetworkHash      crypto.Hash   // there should be a unique hash for each network
+	MaxPoolSize      int           // max number of validator in each hash consensus pool
+	MaxCommitteeSize int           // max number of validators in the checksum window
+	BlockInterval    time.Duration // time duration for each block
+	ChecksumWindow   int           // number of blocks in the checksum window
+	Permission       Permission    // permission rules to be a validator in the network
 }
 
-const (
-	MaxPoolSize      = 10
-	MaxCommitteeSize = 100
-)
-
+// Permission is an interface that defines the rules for a validator
 type Permission interface {
 	Punish(duplicates *bft.Duplicate, weights map[crypto.Token]int) map[crypto.Token]uint64
 	DeterminePool(chain *chain.Blockchain, candidates []crypto.Token) map[crypto.Token]int
@@ -35,28 +33,7 @@ type BlockConsensusConfirmation struct {
 	Status bool
 }
 
-type ValidatingNode struct {
-	//genesisTime  time.Time
-	window      uint64            // epoch starting current checksum window
-	blockchain  *chain.Blockchain // nodes of distinct windows can have this pointer concurrently
-	actions     *store.ActionStore
-	credentials crypto.PrivateKey
-	committee   *ChecksumWindowValidatorPool
-	swellConfig SwellNetworkConfiguration
-	relay       *relay.Node
-}
-
-type NetworkConfiguration struct {
-	NetworkHash       crypto.Hash
-	BlockInterval     time.Duration
-	MaxPoolSize       int
-	MaxCommitteeSize  int
-	BroadcastPort     int
-	PoolPort          int
-	ActionGatewayport int
-	StateSyncPort     int
-}
-
+// ValidatorConfig defines the configuration for a validator node.
 type ValidatorConfig struct {
 	credentials crypto.PrivateKey
 	walletPath  string
@@ -68,11 +45,14 @@ type ValidatorConfig struct {
 
 const BlockInterval = time.Second
 
+// NewGenesisNode creates a new blockchain from genesis state (associated to the
+// given wallet), and starts a validating node interacting with the given relay
+// network.
 func NewGenesisNode(ctx context.Context, wallet crypto.PrivateKey, config ValidatorConfig) {
 	token := config.credentials.PublicKey()
 	node := &SwellNode{
 		blockchain:  chain.BlockchainFromGenesisState(wallet, config.walletPath, config.swellConfig.NetworkHash, config.swellConfig.BlockInterval, config.swellConfig.ChecksumWindow),
-		actions:     store.NewActionStore(1),
+		actions:     store.NewActionStore(ctx, 1),
 		credentials: config.credentials,
 		validators: &ChecksumWindowValidators{
 			order:   []crypto.Token{token},
@@ -87,6 +67,8 @@ func NewGenesisNode(ctx context.Context, wallet crypto.PrivateKey, config Valida
 	<-ctx.Done()
 }
 
+// RunActionsGateway keep track of the actions gateway channel and populates the
+// node action store with information gathered from there.
 func RunActionsGateway(ctx context.Context, gateway chan []byte, store *store.ActionStore) {
 	done := ctx.Done()
 	go func() {

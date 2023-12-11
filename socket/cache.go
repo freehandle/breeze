@@ -8,6 +8,11 @@ import (
 	"github.com/freehandle/breeze/crypto"
 )
 
+// ChachedConnection is a wrapper around a SignedConnection that buffers sent
+// data until the connection is declared ready. Data can be sent without
+// buffering by calling SendDirect. The connection is declared ready by calling
+// Ready(). This is used for syncing the blockchain. New information is sent
+// through the bufferred channel while past information is sent directly.
 type CachedConnection struct {
 	Live  bool
 	conn  *SignedConnection
@@ -16,16 +21,21 @@ type CachedConnection struct {
 	queue chan struct{}
 }
 
+// Token returns the remote token of the underlying signed connection.
 func (c *CachedConnection) Token() crypto.Token {
 	return c.conn.Token
 }
 
+// Send sends data to the remote node. If the connection is not ready, the data
+// is buffered. If the connection is ready, the data is sent directly.
 func (c *CachedConnection) Send(data []byte) {
 	if c.Live {
 		c.send <- data
 	}
 }
 
+// SendDirect sends data to the remote node without buffering. If the connection
+// is ready, Send should be used instead.
 func (c *CachedConnection) SendDirect(data []byte) error {
 	if !c.Live {
 		return errors.New("connection is dead")
@@ -41,6 +51,8 @@ func (c *CachedConnection) SendDirect(data []byte) error {
 	return nil
 }
 
+// Ready declares the connection ready to send data. This will trigger the
+// buffered data to be sent.
 func (c *CachedConnection) Ready() {
 	c.ready = true
 	if c.Live {
@@ -48,6 +60,7 @@ func (c *CachedConnection) Ready() {
 	}
 }
 
+// Close graciously closes the connection.
 func (c *CachedConnection) Close() {
 	defer func() {
 		if r := recover(); r != nil {
@@ -60,6 +73,7 @@ func (c *CachedConnection) Close() {
 	}
 }
 
+// NewCachedConnection creates a new CachedConnection over a signed connection.
 func NewCachedConnection(conn *SignedConnection) *CachedConnection {
 	cached := &CachedConnection{
 		Live:  true,

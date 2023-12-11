@@ -11,6 +11,9 @@ import (
 	"github.com/freehandle/breeze/util"
 )
 
+// FullSyncValidatorNode tries to gather information from a given validator to
+// form a new non-validating node. This is used to bootstrap a new node from
+// scratch.
 func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync socket.TokenAddr) error {
 
 	conn, err := socket.Dial(config.hostname, sync.Addr, config.credentials, sync.Token)
@@ -51,6 +54,9 @@ func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync soc
 	return nil
 }
 
+// syncCheksum is called by FullSyncValidatorNode to gather the checksum from
+// the given connection. It returns a Checksum structure that will be used to
+// build an instance of a swell node synchronized to the network.
 func syncChecksum(conn *socket.SignedConnection, walletPath string) (*chain.Checksum, error) {
 	checksum := chain.Checksum{}
 

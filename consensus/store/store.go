@@ -1,6 +1,23 @@
+/*
+Package store implements a store for actions.
+
+The store is a FIFO queue of actions ordered by epoch. Actions from oldest
+epochs are served first. Actions from epochs older than MaxActionDelay are
+discarded.
+
+The store is used by the consensus engine to store actions received from the
+gateway. The consensus engine reads actions from the store and sends them to
+the swell engine. The store is also used by the swell engine to store actions
+received from the consensus engine. The swell engine reads actions from the
+store and sends them to the block engine.
+
+store has an internal clock with epoch which should be updated by the validating
+node engine.
+*/
 package store
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/freehandle/breeze/crypto"
@@ -8,12 +25,19 @@ import (
 )
 
 const (
-	MaxActionDelay = 100
+	MaxActionDelay = 100 // messages outside current epoch +/- MaxActionDelay are discarded
 	mark           = 0
 	exclude        = 1
 	unmark         = 2
 )
 
+// ActionStore is a store for actions. It is a FIFO queue of actions ordered by
+// epoch. Actions from oldest epochs are served first. Actions from epochs older
+// than MaxActionDelay are discarded.
+// Users should use Push and Pop channels to push and pop actions from the store.
+// Users should use Mark, Unmark and Exclude methods  to mark, unmark and exclude
+// actions.
+// Users should use Epoch channel to update the store epoch.
 type ActionStore struct {
 	currentEpoch uint64
 	Live         bool
@@ -26,12 +50,20 @@ type ActionStore struct {
 	hashes       chan hashaction
 }
 
+// hashaction is used to mark, unmark or exclude an action from the store
+// hash is the hash of the action bytes and action is one of mark, unmark or
+// exclude.
 type hashaction struct {
 	hash   crypto.Hash
 	action byte
 }
 
-func NewActionStore(epoch uint64) *ActionStore {
+// NewActionStore returns a new action store clocked for the specified epoch.
+// Users should use Push and Pop channels to push and pop actions from the store.
+// Users should use Mark, Unmark and Exclude methods  to mark, unmark and exclude
+// actions.
+// Users should use Epoch channel to update the store epoch.
+func NewActionStore(ctx context.Context, epoch uint64) *ActionStore {
 	store := &ActionStore{
 		Live:     true,
 		data:     make(map[crypto.Hash][]byte),
@@ -52,10 +84,13 @@ func NewActionStore(epoch uint64) *ActionStore {
 			close(store.Push)
 			close(store.Epoch)
 		}()
+		done := ctx.Done()
 		for {
 			// if store is empty wait for new action
 			if len(store.data) == 0 {
 				select {
+				case <-done:
+					return
 				case epoch, ok := <-store.Epoch:
 					if !ok {
 						return
@@ -72,6 +107,8 @@ func NewActionStore(epoch uint64) *ActionStore {
 
 			} else if len(store.data) == len(store.reserved) {
 				select {
+				case <-done:
+					return
 				case epoch, ok := <-store.Epoch:
 					if !ok {
 						return
@@ -98,6 +135,8 @@ func NewActionStore(epoch uint64) *ActionStore {
 				}
 			} else {
 				select {
+				case <-done:
+					return
 				case epoch, ok := <-store.Epoch:
 					if !ok {
 						return
@@ -129,18 +168,25 @@ func NewActionStore(epoch uint64) *ActionStore {
 	return store
 }
 
+// Mark marks an action as reserved. Marks temporarily exclude the action with
+// associated hash from the pool of available actions.
 func (a *ActionStore) Mark(hash crypto.Hash) {
 	a.hashes <- hashaction{hash, mark}
 }
 
+// Unmark unmarks an action as reserved.
 func (a *ActionStore) Unmark(hash crypto.Hash) {
 	a.hashes <- hashaction{hash, unmark}
 }
 
+// Exclude permanently deletes an action from the store.
 func (a *ActionStore) Exlude(hash crypto.Hash) {
 	a.hashes <- hashaction{hash, exclude}
 }
 
+// pop implements the pop operation of the store. The Pop request is sent
+// to the Pop channel. pop returns nil if the store is empty. otherwise it
+// returns the oldest action in the store (ordered by epoch and order of arrival).
 func (a *ActionStore) pop() []byte {
 	if len(a.data) == 0 {
 		return nil
@@ -165,6 +211,9 @@ func (a *ActionStore) pop() []byte {
 	return nil
 }
 
+// push implements the push operation of the store. The Push request is sent
+// to the Push channel. push adds the action to the store if the action epoch
+// is within the MaxActionDelay range of the current epoch.
 func (a *ActionStore) push(data []byte) {
 	epoch := actions.GetEpochFromByteArray(data)
 	if epoch == 0 || epoch+MaxActionDelay < a.currentEpoch || epoch > a.currentEpoch+MaxActionDelay {
@@ -184,6 +233,8 @@ func (a *ActionStore) push(data []byte) {
 	a.data[hash] = data
 }
 
+// moveNext moves the store to the next epoch. It deletes all actions from
+// epochs older than MaxActionDelay.
 func (a *ActionStore) moveNext(epoch uint64) {
 	if epoch != a.currentEpoch+1 {
 		slog.Error("ActionStore: non sequential epoch update", "proposed", epoch, "current", a.currentEpoch)

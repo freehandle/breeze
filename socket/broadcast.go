@@ -11,6 +11,8 @@ import (
 // other nodes.
 type PercolationRule func(epoch uint64) []int
 
+// MergeRules combines several rules into a single one. If a node is designated
+// by any of the rules for a given epoch, it will be included in the merged rule.
 func MergeRules(r ...PercolationRule) PercolationRule {
 	return func(epoch uint64) []int {
 		nodes := make([]int, 0)
@@ -33,6 +35,9 @@ func MergeRules(r ...PercolationRule) PercolationRule {
 	}
 }
 
+// PercolationPool is a pool of BufferedChannel connections to other nodes in
+// the peer group and a percolation rule that orients how any messgae is
+// transmitted between nodes until every node is reached.
 type PercolationPool struct {
 	connections []*BufferedChannel
 	rule        PercolationRule
@@ -47,6 +52,7 @@ func (p *PercolationPool) GetLeader(token crypto.Token) (*BufferedChannel, []*Bu
 	return nil, nil
 }
 
+// Send sends a message to all nodes designated in the percolation rule.
 func (b *PercolationPool) Send(epoch uint64, data []byte) {
 	nodes := b.rule(epoch)
 	for _, node := range nodes {
@@ -56,6 +62,8 @@ func (b *PercolationPool) Send(epoch uint64, data []byte) {
 	}
 }
 
+// AssembleOwnPercolationPool creates an empty pool of connections. This is used
+// for the case where the network is composed of a single node.
 func AssembleOwnPercolationPool() *PercolationPool {
 	return &PercolationPool{
 		connections: make([]*BufferedChannel, 0),

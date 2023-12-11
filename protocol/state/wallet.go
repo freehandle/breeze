@@ -7,6 +7,8 @@ import (
 	"github.com/freehandle/papirus"
 )
 
+// creditOrDebit is the function that is called by the hash store to credit or
+// debit an account. It is used by the wallet and depoist stores.
 func creditOrDebit(found bool, hash crypto.Hash, b *papirus.Bucket, item int64, param []byte) papirus.OperationResult {
 	sign := int64(1)
 	if param[0] == 1 {
@@ -62,10 +64,13 @@ func creditOrDebit(found bool, hash crypto.Hash, b *papirus.Bucket, item int64, 
 	}
 }
 
+// Wallet is a hash store that stores the balance of an account. It is used to
+// store the balance of the wallet and the deposits.
 type Wallet struct {
 	HS *papirus.HashStore[crypto.Hash]
 }
 
+// CreditHash credits the account with the given hash with the given value.
 func (w *Wallet) CreditHash(hash crypto.Hash, value uint64) bool {
 	response := make(chan papirus.QueryResult)
 	param := make([]byte, 9)
@@ -74,11 +79,13 @@ func (w *Wallet) CreditHash(hash crypto.Hash, value uint64) bool {
 	return ok
 }
 
+// Credit credits the account with the given token with the given value.
 func (w *Wallet) Credit(token crypto.Token, value uint64) bool {
 	hash := crypto.HashToken(token)
 	return w.CreditHash(hash, value)
 }
 
+// BalanceHash returns the balance of the account with the given hash.
 func (w *Wallet) BalanceHash(hash crypto.Hash) (bool, uint64) {
 	response := make(chan papirus.QueryResult)
 	param := make([]byte, 9)
@@ -89,11 +96,13 @@ func (w *Wallet) BalanceHash(hash crypto.Hash) (bool, uint64) {
 	return false, 0
 }
 
+// Balance returns the balance of the account with the given token.
 func (w *Wallet) Balance(token crypto.Token) (bool, uint64) {
 	hash := crypto.HashToken(token)
 	return w.BalanceHash(hash)
 }
 
+// DebitHash debits the account with the given hash with the given value.
 func (w *Wallet) DebitHash(hash crypto.Hash, value uint64) bool {
 	response := make(chan papirus.QueryResult)
 	param := make([]byte, 9)
@@ -103,11 +112,13 @@ func (w *Wallet) DebitHash(hash crypto.Hash, value uint64) bool {
 	return ok
 }
 
+// Debit debits the account with the given token with the given value.
 func (w *Wallet) Debit(token crypto.Token, value uint64) bool {
 	hash := crypto.HashToken(token)
 	return w.DebitHash(hash, value)
 }
 
+// Close graciously closes the wallet.
 func (w *Wallet) Close() bool {
 	ok := make(chan bool)
 	w.HS.Stop <- ok
