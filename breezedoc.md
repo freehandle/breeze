@@ -144,26 +144,109 @@ It is very easy to deploy a new network and the underlying infra-structure. To s
 
 ## 3 Nodes
 
+There are several kinds of nodes running on the Breeze infrastructure. All nodes within the Breeze infrastructure are associated with a cryptographic token. All messages between nodes are naked but signed against this token. 
+
 ### 3.1 Consensus node
 
-In order to develop a social protocol, besides defining that state space, the menu of actions and the governing rules for validating actions, one has to implement the inner logic of breeze network.
+These nodes are responsible for minting new blocks and running the consensus algorithm of the Breeze network. They can be in active mode or candidate mode. Active nodes are participants in the pool of validators in an ongoing checksum window. Candidate nodes are connected to one or more of those nodes, keeping track of the evolution of blocks and states, and are willing to become validators in the next checksum window.
 
-Breeze groups blocks on consecutive checksum windows. The state at the last block of the previous 
+A new candidate node must connect to an active consensus node or a standby node and request a synchronization job. This will trigger the transfer of the state and all committed blocks following that state epoch.
+
+A consensus node must have prior permission to participate in the pool. In a proof-of-authority scheme, its token must be included in the list of allowed tokens. In a proof-of-stake scheme, it must have deposited sufficient funds on behalf of the token in a prior epoch.
+
+A consensus node will not typically keep track of blockchain history, so it is not particularly intensive in storage. Nonetheless, it requires a reliable and low-latency network. It is also important to keep the internal clock of the server running the node synchronized to a reliable NTP server. Connection might be rejected if the announced time is not compatible with the internal time of the Breeze network.
 
 ### 3.2 Block database node
 
+The task of safeguarding and indexing blocks is preferably performed by dedicated nodes. These nodes maintain connections with validating nodes and receive timely information about new blocks. They validate the block header and seal, and optionally, can validate the actions and the commit. They index all the actions by protocol code and wallet address, offering the service to transmit this information, either entire blocks or action streams of certain protocol codes, to interested parties.
+
+To run a database node from the Blow app, one needs to provide the following configuration:
+
+(cofig here)
+
 ### 3.3 Gateway node
+
+In order to avoid DDoS validator nodes tipically keeps open their port to receive proposed actions open only to a selected group of gateway providers. In order to run a gateway node one must have access to a certain number of nodes in the consensus pool so that the gateway can send actions to nodes that are close to mint new blocks. 
+
+Optionally a gateway node might offer the service to pay for the procession fees of the actions. In this case the override the tail of the action with its own wallet, its fee and its own wallet signature. In this case the wallet must have sufficient funds held to pay for those fees. 
+
+The basic configuration of a gateway is 
+
+(config here)
+
+### 3.4 Social Protocol standalone node
+
+A standealone protocol node connects to other parent nodes that provides it with validated blocks of actions, validates them, and forward new blocks to inetrest parties. 
+
+A stand alone node can also optionally offer the service of transmiting information on the state over gRPC, REST or other interfaces. 
+
+### 3.5 Social Protocol consensus pools
+
+Social protocol can also deploy their own connsesus layer. See the Developer section bellow for more information. 
+
+### 3.5 Social Protocol database node
+
+Like consensus node, social protocol nodes not necessarily keep tracks of the entire blockchain history. This activity might be relegated to dedicated services that stores and perform more detailed indexation of validated social protocol actions. 
 
 ## 4 Developers
 
 ### 4.1 Design social protocols
 
+A social protocol is an unambiguous specification of a state machine that defines a pool of eligible actions, processes a stream of actions, updates the underlying state due to an action, and finally decides if an action is valid or not.
+
+A social protocol is called pure if the action stream is its sole connection with the outside world, and there is no non-deterministic step in the algorithm. In this case, it is guaranteed that every non-faulty hardware processing the same stream of actions will produce the same output and end in the same state.
+
+For a social protocol to be coupled to a Breeze network or another social protocol within the Breeze network, it must implement a basic rollback interface.
+
+Thus, it must implement:
+
+- Keeping track of block count
+- Cloning of state at periodical checksum points
+- Capacity to rollback to the cloned state
+- Validating committed actions
+- Calculating rules
+
+It might also optionally implement:
+
+- Validating against a recent checkpoint
+- Revalidating against the previous block
+- Committing validated actions
+- Cancelling non-committed actions
+
+The software implementing the social protocol must also implement the Breeze P2P node interface and the required request-response patterns. All communication within the Breeze network is naked but signed. A node receiving the request for a connection can reject it if the token associated with the incoming connection is not authorized.
+
+A social protocol implementation must then connect to one or more nodes that will feed it with the stream of actions and (optionally) keep a port open for other nodes interested in processing its own actions.
+
 ### 4.2 Deploy social protocol as standalone validator
+
+If a pure social protocol is implemented in golang through the standartized social protocol interface, breeze codebase offers a very simple way to deploy a standalone validator on that social protocol. 
+
+One can check for example the deployment of Axé protocol validator as an example [[link]]. 
 
 ### 4.3 Standalone social protocol as a service
 
+Alternatively, in order to facilitate experimenting with (pure) social protocols, one can automatically deployt on... 
+
+(tba)
+
 ### 4.4 Build a social protocol consensus layer
 
-#### 4.4.1 Using swell and a native token
+Non pure social protocols require a dedicated consensus layer since there is no guarantee that every standalone node will produce the same output. There are several alternatives to easily deploy a conensus layer.
 
-#### 4.4.2 Using swell and token on a smart contract
+#### 4.4.1 Using swell and proof-of-authority
+
+The easist one is to deploy a pool of swell nodes runing a proof-of-autority permission schema. This is a non-decentralized solution but an easy one for testing purposes. 
+
+#### 4.4.2 Using swell, a native token and proof-of-stake
+
+Another simple decentralized solution requires the protocol to introduce its own fungible token in order to allow the deployment of swell under proof-of-stake. There is a standartized Tokener interface which, once implemented, grant the ability to deploy a PoS consensus layer with ease. 
+
+#### 4.4.3 Using swell and token on a smart contract and proof-of-stake
+
+Another solution is to deploy an utility token as a smart contract. The smart contract can be responsible to govern the token or it can also be responsible for the committee selection rule. 
+
+The advantage of a token deployed as a smart contract is that it easily allows the
+introduction of fungible payment functionalities and fungible token custody that can be secured by the underlying network of the smart contract rather than breeze network itself. 
+
+Check [[link]] to some examples of smart contracts. 
+
