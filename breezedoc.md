@@ -1,3 +1,40 @@
+# Contents
+
+[**1. Learn**](#1-learn)\
+[1.1 Overview of Breeze](#11-overview-of-breeze)\
+[*1.1.1 Introduction*](#111-introduction)\
+[*1.1.2 Social Protocols*](#112-social-protocols)\
+[*1.1.3 Standalone Social Protocol Validators*](#113-standalone-social-protocol-validators)\
+[*1.1.4 Pools of Social Protocol Validators*](#114-pools-of-social-protocol-validators)\
+[1.2 Aero](#12-aero)\
+[*1.2.1 Role of Aero*](#121-role-of-aero)\
+[1.2.2 Proof-of-Stake](#122-proof-of-stake)\
+[1.3 Swell consensus protocol](#13-swell-consensu-protocol)\
+[*1.3.1 Checksum windows*](#131-checksum-windows)\
+[*1.3.2 Checkpoint*](#132-checkpoint)\
+[*1.3.3 Committee and P2P*](#133-committee-and-p2p)\
+[*1.3.4 Candidate Nodes, Synchroinization and committee formation*](#134-candidate-nodes-synchroinization-and-committee-formation)\
+[**2 Networks**](#2-networks)\
+[2.1 Cacimba do Padre Testnet](#21-cacimba-do-padre-testnet)\
+[2.2 Saquarema Testnet](#22-saquarema-testnet)\
+[2.3 Build your own network](#23-build-your-own-network)\
+[**3 Nodes**](#3-nodes)\
+[3.1 Consensus node](#31-consensus-node)\
+[3.2 Block database node](#32-block-database-node)\
+[3.3 Gateway node](#33-gateway-node)\
+[3.4 Social Protocol standalone node](#34-social-protocol-standalone-node)\
+[3.5 Social Protocol consensus pools](#35-social-protocol-consensus-pools)\
+[3.6 Social Protocol database node](#36-social-protocol-database-node)\
+[**4 Developers**](#4-developers)\
+[4.1 Design social protocols](#41-design-social-protocols)\
+[4.2 Deploy social protocol as standalone validator](#42-deploy-social-protocol-as-standalone-validator)\
+[4.3 Standalone social protocol as a service](#43-standalone-social-protocol-as-a-service)\
+[4.4 Build a social protocol consensus layer](#44-build-a-social-protocol-consensus-layer)\
+[*4.4.1 Using swell and proof-of-authority*](#441-using-swell-and-proof-of-authority)\
+[*4.4.2 Using swell, a native token and proof-of-stake*](#442-using-swell-a-native-token-and-proof-of-stake)\
+[*4.4.3 Using swell and token on a smart contract and proof-of-stake*](#443-using-swell-and-token-on-a-smart-contract-and-proof-of-stake)
+
+
 # 1. Learn
 
 ## 1.1 Overview of Breeze
@@ -24,7 +61,7 @@ Although monetary functions are one of the core reasons for the existence of cry
 
 Smart contracts also enable almost indiscriminate interactions among different functionalities: one contract might call another and so on. The only base functionality offered by the Breeze network for mutual interactions between social protocols is the process of protocol pipe. For example, Aieh is another social protocol that runs on top of the Axé protocol and implements the functionality of moderated and private stages for digital interactions. It itself has a void action that can be used by even more specialized protocols. For instance, a protocol for a forum can be run inside an Aieh void protocol within an Axé void protocol within a Breeze void protocol.
 
-## 1.1.3 Standalone Social Protocol Validators
+### 1.1.3 Standalone Social Protocol Validators
 
 Social protocols must have validators enforcing their rules and keeping track of their underlying state. For instance, an Axé validator must maintain a record of valid powers of attorney to accept an attorney's signature as proof-of-authorship. It also must keep track of handles already claimed in the namespace.
 
@@ -70,7 +107,7 @@ Breeze deploys a specialized consensus algorithm, Swell, that is a minnor modifi
 
 As every Proof-of-Stake consensus, the reliability is direclty linked to the guarantee that ample majority of stake is on the hands of honest and concious players that runs validators nodes over reliable hardware, software and network conditions. 
 
-### 1.3 Swell consensus protocol
+## 1.3 Swell consensus protocol
 
 Swell is an original consensus protocol that is a slight variation of tendermint. It is designed to remain resilient under much more agressive parameters. Consensus committees in swell should be small in order to reduce the network burden of timelly sharing a block among several nodes. 
 
@@ -124,29 +161,29 @@ Checksums also elevate fast state sync strategies as first-class citizens in the
 
 This implies that there is no need for a node running the consensus layer to be in possession of the entire history of the blockchain. It only has to keep the state and recent blocks.
 
-## 2 Networks
+# 2 Networks
 
-### 2.1 Cacimba do Padre Testnet
+## 2.1 Cacimba do Padre Testnet
 
 This is a general-purpose testnet running the Swell protocol under proof-of-authority permission, which can be used to test social protocols. The network is expected to be resilient. A gateway is available at the same address on port GGGG, and a block history database is also accessible at port BBBB. The default gateway will always "pay" for the processing fees in this testnet. If you still need fungible tokens, follow this [[link]].
 
-### 2.2 Saquarema Testnet
+## 2.2 Saquarema Testnet
 
 This testnet, running the Swell protocol under proof-of-stake permission, is designed to test the Swell protocol itself and should not be relied upon to test social protocols. At least 2/3 of the stakes will run on honest nodes, and anyone is invited to perform malicious strategies with the remaining 1/3 to shut down the network or break consensus.
 
 A validator node will be available as long as the network is functioning properly at port VVVV on the address XXXXX. A gateway will be available at port GGGG. There is no default block database in this network.
 
-### 2.3 Build your own network
+## 2.3 Build your own network
 
 It is very easy to deploy a new network and the underlying infra-structure. To start a new validator node from a genesis state you have to provide a configuration file
 
 (config file)
 
-## 3 Nodes
+# 3 Nodes
 
 There are several kinds of nodes running on the Breeze infrastructure. All nodes within the Breeze infrastructure are associated with a cryptographic token. All messages between nodes are naked but signed against this token. 
 
-### 3.1 Consensus node
+## 3.1 Consensus node
 
 These nodes are responsible for minting new blocks and running the consensus algorithm of the Breeze network. They can be in active mode or candidate mode. Active nodes are participants in the pool of validators in an ongoing checksum window. Candidate nodes are connected to one or more of those nodes, keeping track of the evolution of blocks and states, and are willing to become validators in the next checksum window.
 
@@ -156,7 +193,7 @@ A consensus node must have prior permission to participate in the pool. In a pro
 
 A consensus node will not typically keep track of blockchain history, so it is not particularly intensive in storage. Nonetheless, it requires a reliable and low-latency network. It is also important to keep the internal clock of the server running the node synchronized to a reliable NTP server. Connection might be rejected if the announced time is not compatible with the internal time of the Breeze network.
 
-### 3.2 Block database node
+## 3.2 Block database node
 
 The task of safeguarding and indexing blocks is preferably performed by dedicated nodes. These nodes maintain connections with validating nodes and receive timely information about new blocks. They validate the block header and seal, and optionally, can validate the actions and the commit. They index all the actions by protocol code and wallet address, offering the service to transmit this information, either entire blocks or action streams of certain protocol codes, to interested parties.
 
@@ -164,7 +201,7 @@ To run a database node from the Blow app, one needs to provide the following con
 
 (cofig here)
 
-### 3.3 Gateway node
+## 3.3 Gateway node
 
 To avoid DDoS attacks, validator nodes typically keep their port open to receive proposed actions only for a selected group of gateway providers. To run a gateway node, one must have access to a certain number of nodes in the consensus pool so that the gateway can send actions to nodes that are close to minting new blocks.
 
@@ -174,23 +211,23 @@ The basic configuration of a gateway is:
 
 (config here)
 
-### 3.4 Social Protocol standalone node
+## 3.4 Social Protocol standalone node
 
 A standalone protocol node connects to other parent nodes that provide it with validated blocks of actions, validates them, and forwards new blocks to interested parties.
 
 A standalone node can also optionally offer the service of transmitting information on the state over gRPC, REST, or other interfaces.
 
-### 3.5 Social Protocol consensus pools
+## 3.5 Social Protocol consensus pools
 
 Social protocols can also deploy their own consensus layer. See the Developer section below for more information.
 
-### 3.5 Social Protocol database node
+## 3.6 Social Protocol database node
 
 Similar to consensus nodes, social protocol nodes do not necessarily keep track of the entire blockchain history. This task might be delegated to dedicated services that store and perform more detailed indexation of validated social protocol actions.
 
-## 4 Developers
+# 4 Developers
 
-### 4.1 Design social protocols
+## 4.1 Design social protocols
 
 A social protocol is an unambiguous specification of a state machine that defines a pool of eligible actions, processes a stream of actions, updates the underlying state due to an action, and finally decides if an action is valid or not.
 
@@ -217,31 +254,31 @@ The software implementing the social protocol must also implement the Breeze P2P
 
 A social protocol implementation must then connect to one or more nodes that will feed it with the stream of actions and (optionally) keep a port open for other nodes interested in processing its own actions.
 
-### 4.2 Deploy social protocol as standalone validator
+## 4.2 Deploy social protocol as standalone validator
 
 If a pure social protocol is implemented in golang through the standartized social protocol interface, breeze codebase offers a very simple way to deploy a standalone validator on that social protocol. 
 
 One can check for example the deployment of Axé protocol validator as an example [[link]]. 
 
-### 4.3 Standalone social protocol as a service
+## 4.3 Standalone social protocol as a service
 
 Alternatively, in order to facilitate experimenting with (pure) social protocols, one can automatically deployt on... 
 
 (tba)
 
-### 4.4 Build a social protocol consensus layer
+## 4.4 Build a social protocol consensus layer
 
 Non pure social protocols require a dedicated consensus layer since there is no guarantee that every standalone node will produce the same output. There are several alternatives to easily deploy a conensus layer.
 
-#### 4.4.1 Using swell and proof-of-authority
+### 4.4.1 Using swell and proof-of-authority
 
 The easist one is to deploy a pool of swell nodes runing a proof-of-autority permission schema. This is a non-decentralized solution but an easy one for testing purposes. 
 
-#### 4.4.2 Using swell, a native token and proof-of-stake
+### 4.4.2 Using swell, a native token and proof-of-stake
 
 Another simple decentralized solution requires the protocol to introduce its own fungible token in order to allow the deployment of swell under proof-of-stake. There is a standartized Tokener interface which, once implemented, grant the ability to deploy a PoS consensus layer with ease. 
 
-#### 4.4.3 Using swell and token on a smart contract and proof-of-stake
+### 4.4.3 Using swell and token on a smart contract and proof-of-stake
 
 Another solution is to deploy an utility token as a smart contract. The smart contract can be responsible to govern the token or it can also be responsible for the committee selection rule. 
 
