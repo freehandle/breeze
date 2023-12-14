@@ -166,27 +166,27 @@ To run a database node from the Blow app, one needs to provide the following con
 
 ### 3.3 Gateway node
 
-In order to avoid DDoS validator nodes tipically keeps open their port to receive proposed actions open only to a selected group of gateway providers. In order to run a gateway node one must have access to a certain number of nodes in the consensus pool so that the gateway can send actions to nodes that are close to mint new blocks. 
+To avoid DDoS attacks, validator nodes typically keep their port open to receive proposed actions only for a selected group of gateway providers. To run a gateway node, one must have access to a certain number of nodes in the consensus pool so that the gateway can send actions to nodes that are close to minting new blocks.
 
-Optionally a gateway node might offer the service to pay for the procession fees of the actions. In this case the override the tail of the action with its own wallet, its fee and its own wallet signature. In this case the wallet must have sufficient funds held to pay for those fees. 
+Optionally, a gateway node might offer the service to pay for the processing fees of the actions. In this case, it overrides the tail of the action with its own wallet, its fee, and its own wallet signature. In this case, the wallet must have sufficient funds to pay for those fees.
 
-The basic configuration of a gateway is 
+The basic configuration of a gateway is:
 
 (config here)
 
 ### 3.4 Social Protocol standalone node
 
-A standealone protocol node connects to other parent nodes that provides it with validated blocks of actions, validates them, and forward new blocks to inetrest parties. 
+A standalone protocol node connects to other parent nodes that provide it with validated blocks of actions, validates them, and forwards new blocks to interested parties.
 
-A stand alone node can also optionally offer the service of transmiting information on the state over gRPC, REST or other interfaces. 
+A standalone node can also optionally offer the service of transmitting information on the state over gRPC, REST, or other interfaces.
 
 ### 3.5 Social Protocol consensus pools
 
-Social protocol can also deploy their own connsesus layer. See the Developer section bellow for more information. 
+Social protocols can also deploy their own consensus layer. See the Developer section below for more information.
 
 ### 3.5 Social Protocol database node
 
-Like consensus node, social protocol nodes not necessarily keep tracks of the entire blockchain history. This activity might be relegated to dedicated services that stores and perform more detailed indexation of validated social protocol actions. 
+Similar to consensus nodes, social protocol nodes do not necessarily keep track of the entire blockchain history. This task might be delegated to dedicated services that store and perform more detailed indexation of validated social protocol actions.
 
 ## 4 Developers
 
