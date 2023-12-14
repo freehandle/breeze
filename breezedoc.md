@@ -70,4 +70,100 @@ Breeze deploys a specialized consensus algorithm, Swell, that is a minnor modifi
 
 As every Proof-of-Stake consensus, the reliability is direclty linked to the guarantee that ample majority of stake is on the hands of honest and concious players that runs validators nodes over reliable hardware, software and network conditions. 
 
+### 1.3 Swell consensus protocol
 
+Swell is an original consensus protocol that is a slight variation of tendermint. It is designed to remain resilient under much more agressive parameters. Consensus committees in swell should be small in order to reduce the network burden of timelly sharing a block among several nodes. 
+
+### 1.3.1 Checksum windows
+
+The main difference is that swell operates under the concept of checksum windows. Within a checksum window there is a fixed set of validators that communicates with each others according to protocol rules and are incumbent on producing a certain number of blocks at specific timestamps. 
+
+So the n-th block on the checksum window is expected to be minted between ti + n×ΔT and ti + (n+1)×ΔT, where ti is the initial timestamp of the cheksum windows. 
+
+If for some reason the committee is not capable of producing consensus over the blocks for checksum window than the network is instructed to revert to the state at the start of the checksum window and the committee responsible for the formation of the previous valid checksum windows will be incumbent on performing that task. 
+
+### 1.3.2 Checkpoint
+
+Since every block on a checksum window is timestamped, a node responsible for building a certain block must perform the task without necessarily having consensus formed on the previous block. Thus, every block on Swell is formed against a certain checkpoint, which represents a block for which the node proposing the new block is in possession of consensus evidence and which is incorporated into the blockchain (meaning that there is also evidence for consensus on all the previous blocks).
+
+At the end of the timeframe for the block, a consensus committee is formed to agree on the hash of this newly proposed block. Once this consensus is achieved, the evidence is appended to the block, and the block is called sealed.
+
+Sealed blocks are not automatically committed to the blockchain because they were formed against an old checkpoint, and the pool of actions laid down in the block must be revalidated. There can be duplicate or double-spending actions that must be disregarded.
+
+There is no need for an additional consensus pool for this revalidation process. Every node does it on its own, and every honest node, starting from the same blocks, will arrive at the same conclusion. Namely, if the consensus is working, the revalidation can be performed independently.
+
+Every node appends the list of hashes of invalidated actions in the revalidation process, signs it, and broadcasts it to exterior listeners (not to checksum committee nodes).
+
+In case there is a problematic block for which consensus was not achieved, a sequence of sealed blocks will be formed against a stagnated checkpoint. If a certain number of these sealed blocks are found, the Swell protocol dictates that the block following this stagnated epoch should be declared nil (without any actions), so that the commit process can go on. This allows for reparations in mild deviations from consensus without requiring a full reset of the checksum window state.
+
+### 1.3.3 Committee and P2P
+
+Another departure from Tendermint is that not all validators participate at the same time in the consensus committee, and the messages from the consensus committee and the block broadcasting messages go through different network topologies.
+
+Consensus committees are formed per block epoch and represent a small subset of the checksum validator pool. This increases the probability of occasionally forming malicious committees even when more than 2/3 of validators are honest. The fallback mechanism outlined above somehow mitigates the long-term consequences of such events. Also, contrary to Tendermint, only the leader in the consensus committee is allowed to propose a new block. If it fails to do so, honest nodes will try to settle consensus on a nil block.
+
+Since the consensus committees are small and the exchanged messages are also small, the peer-to-peer network for the consensus is highly active, where every node broadcasts new messages it has received to every other node. This directs the communication channel and mitigates the effectiveness of malicious strategies that send incompatible messages to different nodes.
+
+The block broadcast follows another strategy. First, unlike Tendermint, an honest node can vote for a hash even if it does not possess the block information that produces that hash. As long as more than 1/3 of voters claim to be in possession of the block, the honest node can trust that it will eventually be able to get that information.
+
+In this sense, block broadcast is performed in a tiered scheme. The leader broadcasts blocks to some other nodes that will further broadcast this to additional nodes, and so on, until block information is percolated to the entire pool of checksum window validators. 
+
+### 1.3.4 Candidate Nodes, Synchroinization and committee formation
+
+Swell leverages the checksum windows strategy to address issues in decentralized proof-of-stake networks.
+
+Firstly, since every node needs to clone the state at checksum points to enable rollback, they are also required to produce a standard checksum for that state.
+
+Every candidate node aiming to become a validator in the next checksum window is asked to provide two rounds of evidence indicating possession of the correct state. Initially, they provide the checksum dressed (hashed with their own public key) and then naked. Candidates that timely provide compatible checksums in these two rounds, and have the permission to become a validator (for example, by depositing enough tokens in the proof-of-stake scheme), will be eligible to be selected in the next checksum window.
+
+Finally, the list of all eligible nodes is hashed with the checksum to define the order of each node. If the number of eligible nodes exceeds the number of members in the committee, only the first nodes in the sorted list will be selected.
+
+In principle, the node responsible for forming the last block associated with the checksum hash could skew the checksum in their favor. However, since the checksum operation is non-trivial, as long as the interval between blocks is short compared to the state complexity, this should not pose a serious risk to the protocol.
+
+Checksums also elevate fast state sync strategies as first-class citizens in the crypto network. A node can obtain the prevailing state from another node without necessarily having to trust that node, as the network will provide a checksum against which the syncing node can attest to be in possession of the correct state.
+
+This implies that there is no need for a node running the consensus layer to be in possession of the entire history of the blockchain. It only has to keep the state and recent blocks.
+
+## 2 Networks
+
+### 2.1 Cacimba do Padre Testnet
+
+This is a general-purpose testnet running the Swell protocol under proof-of-authority permission, which can be used to test social protocols. The network is expected to be resilient. A gateway is available at the same address on port GGGG, and a block history database is also accessible at port BBBB. The default gateway will always "pay" for the processing fees in this testnet. If you still need fungible tokens, follow this [[link]].
+
+### 2.2 Saquarema Testnet
+
+This testnet, running the Swell protocol under proof-of-stake permission, is designed to test the Swell protocol itself and should not be relied upon to test social protocols. At least 2/3 of the stakes will run on honest nodes, and anyone is invited to perform malicious strategies with the remaining 1/3 to shut down the network or break consensus.
+
+A validator node will be available as long as the network is functioning properly at port VVVV on the address XXXXX. A gateway will be available at port GGGG. There is no default block database in this network.
+
+### 2.3 Build your own network
+
+It is very easy to deploy a new network and the underlying infra-structure. To start a new validator node from a genesis state you have to provide a configuration file
+
+(config file)
+
+## 3 Nodes
+
+### 3.1 Consensus node
+
+In order to develop a social protocol, besides defining that state space, the menu of actions and the governing rules for validating actions, one has to implement the inner logic of breeze network.
+
+Breeze groups blocks on consecutive checksum windows. The state at the last block of the previous 
+
+### 3.2 Block database node
+
+### 3.3 Gateway node
+
+## 4 Developers
+
+### 4.1 Design social protocols
+
+### 4.2 Deploy social protocol as standalone validator
+
+### 4.3 Standalone social protocol as a service
+
+### 4.4 Build a social protocol consensus layer
+
+#### 4.4.1 Using swell and a native token
+
+#### 4.4.2 Using swell and token on a smart contract
