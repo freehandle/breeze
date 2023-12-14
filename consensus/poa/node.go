@@ -1,6 +1,7 @@
 package poa
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 
@@ -10,23 +11,25 @@ import (
 	"github.com/freehandle/breeze/socket"
 )
 
-func NewValidator(blockchain *chain.Chain, config SingleAuthorityConfig) chan error {
+func NewValidator(blockchain *chain.Blockchain, config SingleAuthorityConfig) chan error {
+
+	ctx := context.Background()
 
 	finalize := make(chan error, 2)
 
-	incomming, err := socket.Default.Listen("tcp", fmt.Sprintf(":%v", config.IncomingPort))
+	incomming, err := socket.Listen(fmt.Sprintf("localhost:%v", config.IncomingPort))
 	if err != nil {
 		finalize <- fmt.Errorf("could not listen on port %v: %v", config.IncomingPort, err)
 		return finalize
 	}
 
-	outgoing, err := socket.Default.Listen("tcp", fmt.Sprintf(":%v", config.OutgoingPort))
+	outgoing, err := socket.Listen(fmt.Sprintf("localhost:%v", config.OutgoingPort))
 	if err != nil {
 		finalize <- fmt.Errorf("could not listen on port %v: %v", config.OutgoingPort, err)
 		return finalize
 	}
 
-	actions := store.NewActionStore(blockchain.LastCommitEpoch)
+	actions := store.NewActionStore(ctx, blockchain.LastCommitEpoch)
 
 	endIncomming := make(chan crypto.Token)
 	newIncoming := make(chan *socket.SignedConnection)
