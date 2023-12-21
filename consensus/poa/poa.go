@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/freehandle/breeze/consensus/chain"
+	"github.com/freehandle/breeze/consensus/messages"
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/socket"
 	"github.com/freehandle/breeze/util"
@@ -196,7 +197,7 @@ func Genesis(config SingleAuthorityConfig) chan error {
 */
 func WaitForOutgoingSyncRequest(conn *socket.SignedConnection, outgoing chan OutgoindConnectionRequest) {
 	data, err := conn.Read()
-	if err != nil || len(data) != 9 || data[0] != chain.MsgSyncRequest {
+	if err != nil || len(data) != 9 || data[0] != messages.MsgSyncRequest {
 		if err != nil {
 			slog.Info("poa WaitForOutgoingSyncRequest: connection terminated", "connection", err)
 		} else {
@@ -212,7 +213,7 @@ func WaitForOutgoingSyncRequest(conn *socket.SignedConnection, outgoing chan Out
 func WaitForProtocolActions(conn *socket.SignedConnection, terminate chan crypto.Token, action chan []byte) {
 	for {
 		data, err := conn.Read()
-		if err != nil || len(data) < 2 || data[0] != chain.MsgActionSubmit {
+		if err != nil || len(data) < 2 || data[0] != messages.MsgActionSubmit {
 			if err != nil {
 				slog.Info("poa WaitForProtocolActions: connection terminated", "connection", err)
 			} else {

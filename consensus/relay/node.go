@@ -13,7 +13,7 @@ import (
 	"log/slog"
 	"net"
 
-	"github.com/freehandle/breeze/consensus/chain"
+	"github.com/freehandle/breeze/consensus/messages"
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/socket"
 	"github.com/freehandle/breeze/util"
@@ -61,6 +61,7 @@ type Node struct {
 	ActionGateway chan []byte      // Sends actions to swell engine
 	BlockEvents   chan []byte      // receive block events from swell engine
 	SyncRequest   chan SyncRequest // sends sync requests to swell engine
+	Statement     chan []byte
 }
 
 // SyncRequest defines a request for state sync and recent blocks sync. Epoch
@@ -77,6 +78,7 @@ type SyncRequest struct {
 func Run(ctx context.Context, config Config) (*Node, error) {
 	n := &Node{
 		ActionGateway: make(chan []byte),
+		Statement:     make(chan []byte),
 		BlockEvents:   make(chan []byte),
 		SyncRequest:   make(chan SyncRequest),
 	}
@@ -133,7 +135,15 @@ func Run(ctx context.Context, config Config) (*Node, error) {
 					go WaitForProtocolActions(conn, endGateway, action)
 				}
 			case proposed := <-action:
-				n.ActionGateway <- proposed
+				if len(proposed) > 0 {
+					if proposed[0] == messages.MsgChecksumStatement {
+						n.Statement <- proposed[1:]
+					} else {
+						n.ActionGateway <- proposed[1:]
+					}
+				} else {
+					slog.Error("relay.Run: empty action on channel")
+				}
 			case ok := <-cloned:
 				log.Printf("state cloned: %v", ok)
 			case blockEvent := <-n.BlockEvents:
@@ -215,7 +225,7 @@ func Run(ctx context.Context, config Config) (*Node, error) {
 func WaitForProtocolActions(conn *socket.SignedConnection, terminate chan crypto.Token, action chan []byte) {
 	for {
 		data, err := conn.Read()
-		if err != nil || len(data) < 2 || data[0] != chain.MsgActionSubmit {
+		if err != nil || len(data) < 2 || (data[0] != messages.MsgActionSubmit && data[0] != messages.MsgChecksumStatement) {
 			if err != nil {
 				slog.Info("poa WaitForProtocolActions: connection terminated", "connection", err)
 			} else {
@@ -225,7 +235,7 @@ func WaitForProtocolActions(conn *socket.SignedConnection, terminate chan crypto
 			terminate <- conn.Token
 			return
 		}
-		action <- data[1:]
+		action <- data
 
 	}
 }
@@ -235,7 +245,7 @@ func WaitForProtocolActions(conn *socket.SignedConnection, terminate chan crypto
 // conection and returns without sending anything to outgoing channel.
 func WaitForOutgoingSyncRequest(conn *socket.SignedConnection, outgoing chan SyncRequest) {
 	data, err := conn.Read()
-	if err != nil || len(data) != 10 || data[0] != chain.MsgSyncRequest {
+	if err != nil || len(data) != 10 || data[0] != messages.MsgSyncRequest {
 		if err != nil {
 			slog.Info("poa WaitForOutgoingSyncRequest: connection terminated", "connection", err)
 		} else {

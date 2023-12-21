@@ -25,7 +25,7 @@ C = Numer of slots for nodes in a consesus pool. A noda can be granted more than
 ```
 
 ```
-----+----+----+----+----+----+----+----+----+----+----+----+----+----+----+----+
+----+----+----+----+----+----+----+----+====+====+====+====+xxxx+----+----+----+
               |                        |                   |    |
               checksum             checkpoint N            |    checksum 
               window N         checksum for the state      |    window N +1

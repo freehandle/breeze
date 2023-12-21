@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/freehandle/breeze/consensus/chain"
+	"github.com/freehandle/breeze/consensus/messages"
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/socket"
 )
@@ -17,7 +18,7 @@ import (
 func RetrieveBlock(epoch uint64, hash crypto.Hash, order []*socket.BufferedChannel) chan *chain.SealedBlock {
 	output := make(chan *chain.SealedBlock)
 	ellapse := 400 * time.Millisecond
-	msg := chain.RequestBlockMessage(epoch, hash)
+	msg := messages.RequestBlockMessage(epoch, hash)
 	status := retrievalStatus{
 		mu:     sync.Mutex{},
 		output: output,

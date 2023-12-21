@@ -34,6 +34,10 @@ import (
 // sync jobs and for recovery purposes.
 const KeepLastNBlocks = 100
 
+// Force and Empty commit after so many blocks stagnated on a given checkpoint.
+// the Block on the following checkpoint is forced to be empty and unsigned.
+const ForceEmptyCommitAfter = 20
+
 // Checksum is a snapshot of the state of the system at periodic epochs. It
 // contains the epoch, the state of the chain at that epoch, the hash of the
 // last sealed block at that epoch and a checksum hash for the state of the
@@ -48,7 +52,7 @@ type Checksum struct {
 
 // The last perceived epoch-to-clock synchronization in possession of the node.
 // The first synchronization is at genesis time. If there is no downtime,
-// this synchronization remains in place.
+// this synchronization remains in place. If there is downtime, the nodes
 type ClockSyncronization struct {
 	Epoch     uint64
 	TimeStamp time.Time
@@ -67,6 +71,7 @@ type Blockchain struct {
 	RecentBlocks    []*CommitBlock
 	Cloning         bool
 	Checksum        *Checksum
+	NextChecksum    *Checksum
 	Clock           ClockSyncronization
 	Punishment      map[crypto.Token]uint64
 	BlockInterval   time.Duration
@@ -231,42 +236,96 @@ func (c *Blockchain) AddSealedBlock(sealed *SealedBlock) {
 		slog.Warn("Blockchain: AddSealedBlock: cannot add sealed block before last commit")
 		return
 	}
-	for _, existing := range c.SealedBlocks {
+	hasFound := false
+	for n, existing := range c.SealedBlocks {
 		if existing.Header.Epoch == sealed.Header.Epoch {
 			slog.Warn("Blockchain: AddSealedBlock: cannot add sealed block for existing epoch")
 			return
+		} else if existing.Header.Epoch > sealed.Header.Epoch {
+			c.SealedBlocks = append(c.SealedBlocks[0:n], append([]*SealedBlock{sealed}, c.SealedBlocks[n:]...)...)
+			hasFound = true
+			break
 		}
 	}
-	c.SealedBlocks = append(c.SealedBlocks, sealed)
-	if sealed.Header.Epoch == c.LastCommitEpoch+1 {
-		c.CommitAll()
+	if !hasFound {
+		c.SealedBlocks = append(c.SealedBlocks, sealed)
+	}
+	slog.Info("Blockchain: AddSealedBlock: added sealed block", "epoch", sealed.Header.Epoch, "hash", crypto.EncodeHash(sealed.Seal.Hash))
+	if !c.Cloning {
+		c.CommitChain()
 	}
 }
 
-// CommitAll commits all sequential sealed blocks in the blockchain following a
+// CommitChain commits all sequential sealed blocks in the blockchain following a
 // last commit epoch. If stops the commit chain if the commit epoch is a
 // checksum commit epoch. It is the responsibility of the caller to ensure that
 // the checksum job request is called.
-func (c *Blockchain) CommitAll() {
+func (c *Blockchain) CommitChain() {
 	for {
-		if c.IsChecksumCommit() {
+		if len(c.SealedBlocks) == 0 {
 			return
 		}
-		exists := false
-		for _, sealed := range c.SealedBlocks {
-			if sealed.Header.Epoch == c.LastCommitEpoch+1 {
-				exists = true
-				c.CommitBlock(sealed.Header.Epoch)
-				if c.IsChecksumCommit() {
-					return
-				}
-				break
+		if c.CheckForceEmptyCommit() {
+			continue
+		}
+		if c.SealedBlocks[0].Header.Epoch == c.LastCommitEpoch+1 {
+			if !c.CommitBlock(c.LastCommitEpoch + 1) {
+				return
 			}
-		}
-		if !exists {
-			return
+		} else {
+			break
 		}
 	}
+}
+
+// CheckForceEmptyCommit forces an empty unsigned commit to the blockchain. This
+// is allowed when MaxLag sucessive blocks have been sealed but not commited, due
+// to a missing LastCommitEpoch + 1 block.
+func (c *Blockchain) CheckForceEmptyCommit() bool {
+	if len(c.SealedBlocks) < ForceEmptyCommitAfter || c.SealedBlocks[0].Header.Epoch == c.LastCommitEpoch+1 {
+		return false
+	}
+	count := 0
+	for n := 0; n < len(c.SealedBlocks); n++ {
+		if (c.SealedBlocks[n].Header.CheckPoint == c.LastCommitEpoch) && (c.SealedBlocks[n].Header.CheckpointHash.Equal(c.LastCommitHash)) {
+			count += 1
+		}
+		if count >= ForceEmptyCommitAfter {
+			break
+		}
+	}
+	if count < ForceEmptyCommitAfter {
+		return false
+	}
+	header := BlockHeader{
+		NetworkHash:    c.NetworkHash,
+		Epoch:          c.LastCommitEpoch + 1,
+		CheckPoint:     c.LastCommitEpoch,
+		CheckpointHash: c.LastCommitHash,
+		Proposer:       crypto.ZeroToken,
+		ProposedAt:     time.Unix(0, 0),
+	}
+	headerHash := crypto.Hasher(header.Serialize())
+	commit := CommitBlock{
+		Header:  header,
+		Actions: NewActionArray(),
+		Seal: BlockSeal{
+			Hash:          crypto.Hasher(append(headerHash[:], crypto.ZeroValueHash[:]...)),
+			FeesCollected: 0,
+			SealSignature: crypto.ZeroSignature,
+		},
+		Commit: &BlockCommit{
+			Invalidated:   make([]crypto.Hash, 0),
+			FeesCollected: 0,
+			PublishedBy:   c.Credentials.PublicKey(),
+		},
+	}
+	bytes := commit.serializeForPublish()
+	commit.Commit.PublishSign = c.Credentials.Sign(bytes)
+	c.RecentBlocks = append(c.RecentBlocks, &commit)
+	c.LastCommitEpoch += 1
+	c.LastCommitHash = commit.Seal.Hash
+	return true
 }
 
 // CommitBlock commits a sealed block to the blockchain. It returns true if the
@@ -280,6 +339,9 @@ func (c *Blockchain) CommitBlock(blockEpoch uint64) bool {
 			slog.Error("chain CommitBlock panic", "err", r)
 		}
 	}()
+	if c.Cloning {
+		return false
+	}
 	if blockEpoch != c.LastCommitEpoch+1 {
 		return false // commit must be sequential
 	}
@@ -307,6 +369,9 @@ func (c *Blockchain) CommitBlock(blockEpoch uint64) bool {
 	validator.Incorporate(c.Credentials.PublicKey())
 	c.LastCommitEpoch = block.Header.Epoch
 	c.LastCommitHash = block.Seal.Hash
+	if c.IsChecksumCommit() {
+		c.MarkCheckpoint()
+	}
 	return true
 }
 

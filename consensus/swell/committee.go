@@ -3,14 +3,15 @@ package swell
 import (
 	"sort"
 
+	"github.com/freehandle/breeze/consensus/messages"
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/socket"
+	"github.com/freehandle/breeze/util"
 )
 
 type Validator struct {
 	Address string
 	Token   crypto.Token
-	Weight  int
 }
 
 type Validators []*Validator
@@ -39,7 +40,7 @@ func (h TokenHashArray) Swap(i, j int) {
 	h[i], h[j] = h[j], h[i]
 }
 
-type ChecksumWindowValidatorPool struct {
+type Committee struct {
 	hostname    string
 	credentials crypto.PrivateKey
 	order       []crypto.Token
@@ -49,8 +50,52 @@ type ChecksumWindowValidatorPool struct {
 	validators  []socket.CommitteeMember
 }
 
-func SingleCommittee(credentials crypto.PrivateKey, hostname string) *ChecksumWindowValidatorPool {
-	return &ChecksumWindowValidatorPool{
+func (c *Committee) Serialize() []byte {
+	bytes := []byte{messages.MsgNetworkTopologyResponse}
+	util.PutUint16(uint16(len(c.order)), &bytes)
+	for n := 0; n < len(c.order); n++ {
+		util.PutToken(c.order[n], &bytes)
+	}
+	util.PutUint16(uint16(len(c.validators)), &bytes)
+	for n := 0; n < len(c.validators); n++ {
+		util.PutToken(c.validators[n].Token, &bytes)
+		util.PutString(c.validators[n].Address, &bytes)
+	}
+	return bytes
+}
+
+func ParseCommitee(bytes []byte) ([]crypto.Token, []socket.CommitteeMember) {
+	if len(bytes) < 1 || bytes[0] != messages.MsgNetworkTopologyResponse {
+		return nil, nil
+	}
+	order := make([]crypto.Token, 0)
+	validators := make([]socket.CommitteeMember, 0)
+	var orderCount, validatorCount uint16
+	position := 1
+	orderCount, position = util.ParseUint16(bytes, 1)
+	for n := uint16(0); n < orderCount; n++ {
+		var token crypto.Token
+		token, position = util.ParseToken(bytes, position)
+		order = append(order, token)
+	}
+	if position >= len(bytes) {
+		return nil, nil
+	}
+	validatorCount, position = util.ParseUint16(bytes, 1)
+	for n := uint16(0); n < validatorCount; n++ {
+		member := socket.CommitteeMember{}
+		member.Token, position = util.ParseToken(bytes, position)
+		member.Address, position = util.ParseString(bytes, position)
+		validators = append(validators, member)
+	}
+	if position != len(bytes) {
+		return nil, nil
+	}
+	return order, validators
+}
+
+func SingleCommittee(credentials crypto.PrivateKey, hostname string) *Committee {
+	return &Committee{
 		hostname:    hostname,
 		credentials: credentials,
 		order:       []crypto.Token{credentials.PublicKey()},
@@ -71,50 +116,64 @@ func BroadcastPercolationRule(nodecount int) socket.PercolationRule {
 	}
 }
 
-func LaunchValidatorPool(validators Validators, credentials crypto.PrivateKey, seed []byte) *ChecksumWindowValidatorPool {
-	pool := &ChecksumWindowValidatorPool{
-		credentials: credentials,
-	}
-	return pool.PrepareNext(validators, seed)
-}
-
-func (v *ChecksumWindowValidatorPool) PrepareNext(validators Validators, seed []byte) *ChecksumWindowValidatorPool {
-
-	pool := &ChecksumWindowValidatorPool{
-		credentials: v.credentials,
-		order:       make([]crypto.Token, 0),
-		weights:     make(map[crypto.Token]int),
-	}
-
-	token := v.credentials.PublicKey()
-
-	peers := make([]socket.CommitteeMember, 0)
-
+func sortCandidates(candidates map[crypto.Token]int, seed []byte, committeeSize int) []crypto.Token {
 	hashes := make(TokenHashArray, 0)
-	for _, validator := range validators {
-		pool.weights[validator.Token] = validator.Weight
-		for w := 1; w <= validator.Weight; w++ {
+	for token, weight := range candidates {
+		for w := 1; w <= weight; w++ {
 			tokenhash := TokenHash{
-				Token: validator.Token,
-				Hash:  crypto.Hasher(append(append([]byte{byte(w)}, seed...), validator.Token[:]...)),
+				Token: token,
+				Hash:  crypto.Hasher(append(append([]byte{byte(w)}, token[:]...), seed...)),
 			}
 			hashes = append(hashes, tokenhash)
 		}
 	}
 	sort.Sort(hashes)
-	for _, tokenhash := range hashes {
-		pool.order = append(pool.order, tokenhash.Token)
+	ordered := make([]crypto.Token, committeeSize)
+	for count := 0; count < committeeSize; count++ {
+		ordered[count] = hashes[count%len(hashes)].Token
+	}
+	return ordered
+}
+
+func LaunchValidatorPool(validators Validators, credentials crypto.PrivateKey, hostname string) *Committee {
+	pool := &Committee{
+		hostname:    hostname,
+		credentials: credentials,
+	}
+	return pool.PrepareNext(validators)
+}
+
+func (v *Committee) PrepareNext(validators Validators) *Committee {
+
+	pool := &Committee{
+		hostname:    v.hostname,
+		credentials: v.credentials,
+		order:       make([]crypto.Token, 0),
+		weights:     make(map[crypto.Token]int),
+		validators:  make([]socket.CommitteeMember, 0),
 	}
 
+	token := v.credentials.PublicKey()
+	peers := make([]socket.CommitteeMember, 0)
 	for _, validator := range validators {
-		if !validator.Token.Equal(token) {
-			peers = append(peers, socket.CommitteeMember{
+		if weight, ok := pool.weights[validator.Token]; ok {
+			pool.weights[validator.Token] = weight + 1
+		} else {
+			pool.weights[validator.Token] = 1
+			member := socket.CommitteeMember{
 				Address: validator.Address,
 				Token:   validator.Token,
-			})
+			}
+			pool.validators = append(pool.validators, member)
+			if !validator.Token.Equal(token) {
+				peers = append(peers, socket.CommitteeMember{
+					Address: validator.Address,
+					Token:   validator.Token,
+				})
+			}
 		}
+		pool.order = append(pool.order, validator.Token)
 	}
-
 	pool.consensus = socket.AssembleChannelNetwork(peers, v.credentials, 5401, pool.hostname, v.consensus)
 	pool.blocks = socket.AssemblePercolationPool(peers, v.credentials, 5400, pool.hostname, BroadcastPercolationRule(len(peers)), v.blocks)
 	return pool

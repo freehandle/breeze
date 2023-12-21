@@ -2,6 +2,7 @@ package chain
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/util"
@@ -11,7 +12,7 @@ import (
 // of the state at the last commit epoch and calculates the checksum of the
 // state. It returns a true value on the provided channel if the clone
 // operation was successful. Otherwise, it returns false.
-func (c *Blockchain) MarkCheckpoint(done chan bool) {
+func (c *Blockchain) MarkCheckpoint() {
 	fmt.Println("tmj")
 	c.mu.Lock()
 	c.Cloning = true
@@ -21,18 +22,17 @@ func (c *Blockchain) MarkCheckpoint(done chan bool) {
 		clonedState := c.CommitState.Clone()
 		if clonedState == nil {
 			fmt.Println("cloned state is nil")
-			done <- false
 			return
 		}
-		c.Checksum = &Checksum{
+		c.NextChecksum = &Checksum{
 			Epoch:         epoch,
 			State:         clonedState,
 			LastBlockHash: hash,
 			Hash:          clonedState.ChecksumHash(),
 		}
 		c.Cloning = false
+		slog.Info("MarkCheckPoint: job completed", "epoch", c.NextChecksum.Epoch, "hash", c.NextChecksum.Hash)
 		fmt.Println(c.Checksum.Hash)
-		done <- true
 	}()
 	c.mu.Unlock()
 
@@ -54,14 +54,34 @@ type ChecksumStatement struct {
 	Signature crypto.Signature
 }
 
+func NewCheckSum(epoch uint64, node crypto.PrivateKey, address string, naked bool, hash crypto.Hash) *ChecksumStatement {
+	statement := &ChecksumStatement{
+		Epoch:   epoch,
+		Node:    node.PublicKey(),
+		Address: address,
+		Naked:   naked,
+		Hash:    hash,
+	}
+	bytes := make([]byte, 0)
+	putChecksumStatementForSign(statement, &bytes)
+	statement.Signature = node.Sign(bytes)
+	return statement
+}
+
 // PutChecksumStatement serializes a ChecksumStatement to a byte slice and
 // appends it to the provided byte slice.
-func PutChecksumStatement(d *ChecksumStatement, bytes *[]byte) {
+func putChecksumStatementForSign(d *ChecksumStatement, bytes *[]byte) {
 	util.PutUint64(d.Epoch, bytes)
 	util.PutToken(d.Node, bytes)
 	util.PutString(d.Address, bytes)
 	util.PutBool(d.Naked, bytes)
 	util.PutHash(d.Hash, bytes)
+}
+
+// PutChecksumStatement serializes a ChecksumStatement to a byte slice and
+// appends it to the provided byte slice.
+func PutChecksumStatement(d *ChecksumStatement, bytes *[]byte) {
+	putChecksumStatementForSign(d, bytes)
 	util.PutSignature(d.Signature, bytes)
 }
 

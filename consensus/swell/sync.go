@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/freehandle/breeze/consensus/chain"
+	"github.com/freehandle/breeze/consensus/messages"
 	"github.com/freehandle/breeze/protocol/state"
 	"github.com/freehandle/breeze/socket"
 	"github.com/freehandle/breeze/util"
@@ -16,11 +17,11 @@ import (
 // scratch.
 func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync socket.TokenAddr) error {
 
-	conn, err := socket.Dial(config.hostname, sync.Addr, config.credentials, sync.Token)
+	conn, err := socket.Dial(config.Hostname, sync.Addr, config.Credentials, sync.Token)
 	if err != nil {
 		return err
 	}
-	bytes := []byte{chain.MsgSyncRequest}
+	bytes := []byte{messages.MsgSyncRequest}
 	util.PutUint64(0, &bytes)
 	util.PutBool(true, &bytes)
 	conn.Send(bytes)
@@ -31,26 +32,36 @@ func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync soc
 	if err != nil {
 		return err
 	}
-	if len(msg) < 8 || msg[0] != chain.MsgClockSync {
+	if len(msg) < 8 || msg[0] != messages.MsgClockSync {
 		return errors.New("invalid clock sync message")
 	}
 	position := 1
 	clock.Epoch, position = util.ParseUint64(msg, position)
 	clock.TimeStamp, _ = util.ParseTime(msg, position)
 
-	checksum, err := syncChecksum(conn, config.walletPath)
+	checksum, err := syncChecksum(conn, config.WalletPath)
 	if err != nil {
 		return err
 	}
 
 	node := &SwellNode{
-		blockchain:  chain.BlockchainFromChecksumState(checksum, clock, config.credentials, config.swellConfig.NetworkHash, config.swellConfig.BlockInterval, config.swellConfig.ChecksumWindow),
-		actions:     config.actions,
-		credentials: config.credentials,
-		config:      config.swellConfig,
-		relay:       config.relay,
+		blockchain:  chain.BlockchainFromChecksumState(checksum, clock, config.Credentials, config.SwellConfig.NetworkHash, config.SwellConfig.BlockInterval, config.SwellConfig.ChecksumWindow),
+		actions:     config.Actions,
+		credentials: config.Credentials,
+		config:      config.SwellConfig,
+		relay:       config.Relay,
 	}
-	node.RunNonValidatingNode(ctx, conn, true)
+	windowDuration := uint64(config.SwellConfig.ChecksumWindow)
+	windowStart := windowDuration*(checksum.Epoch/windowDuration) + 1
+	window := Window{
+		Start:       windowStart,
+		End:         windowStart + windowDuration - 1,
+		Node:        node,
+		newBlock:    make(chan BlockConsensusConfirmation),
+		unpublished: make([]*chain.ChecksumStatement, 0),
+		published:   make([]*chain.ChecksumStatement, 0),
+	}
+	RunNonValidatorNode(&window, conn, true)
 	return nil
 }
 
@@ -64,7 +75,7 @@ func syncChecksum(conn *socket.SignedConnection, walletPath string) (*chain.Chec
 	if err != nil {
 		return nil, err
 	}
-	if len(msg) < 1 || msg[0] != chain.MsgSyncChecksum {
+	if len(msg) < 1 || msg[0] != messages.MsgSyncChecksum {
 		return nil, errors.New("invalid sync epoch message")
 	}
 	position := 1
@@ -80,7 +91,7 @@ func syncChecksum(conn *socket.SignedConnection, walletPath string) (*chain.Chec
 	if err != nil {
 		return nil, err
 	}
-	if len(msg) < 1 || msg[0] != chain.MsgSyncStateWallets {
+	if len(msg) < 1 || msg[0] != messages.MsgSyncStateWallets {
 		return nil, errors.New("invalid sync wallet message")
 	}
 	fmt.Println("wallet", len(msg))
@@ -94,7 +105,7 @@ func syncChecksum(conn *socket.SignedConnection, walletPath string) (*chain.Chec
 	if err != nil {
 		return nil, err
 	}
-	if len(msg) < 1 || msg[0] != chain.MsgSyncStateDeposits {
+	if len(msg) < 1 || msg[0] != messages.MsgSyncStateDeposits {
 		return nil, errors.New("invalid sync deposit message")
 	}
 

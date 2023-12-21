@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/freehandle/breeze/consensus/chain"
+	"github.com/freehandle/breeze/consensus/messages"
 	"github.com/freehandle/breeze/consensus/store"
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/socket"
@@ -73,22 +74,22 @@ func NewValidator(blockchain *chain.Blockchain, config SingleAuthorityConfig) ch
 		for {
 			select {
 			case newBlock := <-newBlock:
-				header := chain.NewBlockMessage(newBlock.NewHeader)
+				header := messages.NewBlockMessage(newBlock.NewHeader.Serialize())
 				if header != nil {
 					pool.Broadcast(header)
 				}
-				seal := chain.BlockSealMessage(newBlock.NewHeader.Epoch-1, newBlock.OldSeal)
+				seal := messages.BlockSealMessage(newBlock.NewHeader.Epoch-1, newBlock.OldSeal.Serialize())
 				if seal != nil {
 					pool.Broadcast(seal)
 				}
 				for _, old := range newBlock.OldCommit {
-					msg := chain.CommitBlockMessage(old.Epoch, old.Commit)
+					msg := messages.CommitBlock(old.Epoch, old.Commit.Serialize())
 					if msg != nil {
 						pool.Broadcast(msg)
 					}
 				}
 			case action := <-incorporated:
-				data := append([]byte{chain.MsgAction}, action...)
+				data := append([]byte{messages.MsgAction}, action...)
 				pool.Broadcast(data)
 			case req := <-newOutgoing:
 				cached := socket.NewCachedConnection(req.conn)

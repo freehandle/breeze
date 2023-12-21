@@ -3,6 +3,7 @@ package chain
 import (
 	"log/slog"
 
+	"github.com/freehandle/breeze/consensus/messages"
 	"github.com/freehandle/breeze/socket"
 	"github.com/freehandle/breeze/util"
 )
@@ -23,7 +24,7 @@ func (c *Blockchain) SyncBlocksServer(conn *socket.CachedConnection, epoch uint6
 	c.mu.Lock()
 	if len(c.RecentBlocks) > 0 && epoch+1 < c.RecentBlocks[0].Header.Epoch {
 		c.mu.Unlock()
-		conn.Send(append([]byte{MsgSyncError}, []byte("node does not have information that old")...))
+		conn.Send(append([]byte{messages.MsgSyncError}, []byte("node does not have information that old")...))
 		conn.Close()
 		conn.Live = false
 		return
@@ -42,10 +43,10 @@ func (c *Blockchain) SyncBlocksServer(conn *socket.CachedConnection, epoch uint6
 	}
 	c.mu.Unlock()
 	for _, block := range cacheCommit {
-		conn.SendDirect(append([]byte{MsgBlockCommitted}, block.Serialize()...))
+		conn.SendDirect(append([]byte{messages.MsgCommittedBlock}, block.Serialize()...))
 	}
 	for _, block := range cacheSealed {
-		conn.SendDirect(append([]byte{MsgBlockSealed}, block.Serialize()...))
+		conn.SendDirect(append([]byte{messages.MsgSealedBlock}, block.Serialize()...))
 	}
 	conn.Ready()
 }
@@ -59,7 +60,7 @@ func (c *Blockchain) SyncState(conn *socket.CachedConnection) {
 	deposits := c.Checksum.State.Deposits.Bytes()
 	c.mu.Unlock()
 
-	clock := []byte{MsgClockSync}
+	clock := []byte{messages.MsgClockSync}
 	util.PutUint64(c.Clock.Epoch, &clock)
 	util.PutTime(c.Clock.TimeStamp, &clock)
 	if err := conn.SendDirect(clock); err != nil {
@@ -68,23 +69,23 @@ func (c *Blockchain) SyncState(conn *socket.CachedConnection) {
 		return
 	}
 
-	checksum := []byte{MsgSyncChecksum}
+	checksum := []byte{messages.MsgSyncChecksum}
 	util.PutUint64(c.Checksum.Epoch, &checksum)
 	util.PutHash(c.Checksum.Hash, &checksum)
 	util.PutHash(c.Checksum.LastBlockHash, &checksum)
 
-	if err := conn.SendDirect(append([]byte{MsgSyncChecksum}, util.Uint64ToBytes(c.Checksum.Epoch)...)); err != nil {
+	if err := conn.SendDirect(append([]byte{messages.MsgSyncChecksum}, util.Uint64ToBytes(c.Checksum.Epoch)...)); err != nil {
 		slog.Error("sync state: could not send checksum sync", "err", err)
 		conn.Close()
 		return
 	}
 
-	if err := conn.SendDirect(append([]byte{MsgSyncStateWallets}, wallet...)); err != nil {
+	if err := conn.SendDirect(append([]byte{messages.MsgSyncStateWallets}, wallet...)); err != nil {
 		slog.Error("sync state: could not send wallets", "err", err)
 		conn.Close()
 		return
 	}
-	if err := conn.SendDirect(append([]byte{MsgSyncStateDeposits}, deposits...)); err != nil {
+	if err := conn.SendDirect(append([]byte{messages.MsgSyncStateDeposits}, deposits...)); err != nil {
 		slog.Error("sync state: could not send wallets", "err", err)
 		conn.Close()
 		return
