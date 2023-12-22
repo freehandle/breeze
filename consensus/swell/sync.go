@@ -54,6 +54,7 @@ func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync soc
 	windowDuration := uint64(config.SwellConfig.ChecksumWindow)
 	windowStart := windowDuration*(checksum.Epoch/windowDuration) + 1
 	window := Window{
+		ctx:         ctx,
 		Start:       windowStart,
 		End:         windowStart + windowDuration - 1,
 		Node:        node,

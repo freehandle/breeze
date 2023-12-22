@@ -67,8 +67,8 @@ func (b *Blocks) Incorporate(data []byte) {
 		}
 	case messages.MsgNetworkTopologyResponse:
 		order, members := swell.ParseCommitee(data)
-		if len(order) > 0 {
-
+		if len(order) > 0 && len(members) > 0 {
+			return
 		}
 	}
 }

@@ -65,7 +65,7 @@ func NewConfigGateway(ctx context.Context, config ConfigGateway) chan error {
 	provider.Send([]byte{messages.MsgNetworkTopologyReq})
 	msg, err := provider.Read()
 	if err != nil {
-		finalize <- errors.New("could not retrieve network topology from provider", "error", err)
+		finalize <- errors.New("could not retrieve network topology from provider")
 		return finalize
 	}
 	order, validators := swell.ParseCommitee(msg)

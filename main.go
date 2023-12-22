@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/freehandle/breeze/consensus/chain"
+	"github.com/freehandle/breeze/consensus/messages"
 	"github.com/freehandle/breeze/consensus/permission"
 	"github.com/freehandle/breeze/consensus/poa"
 	"github.com/freehandle/breeze/consensus/relay"
@@ -91,7 +92,7 @@ func TestSwell() {
 				Fee:       1,
 			}
 			transfer.Sign(mainserver)
-			if err := conn.Send(append([]byte{chain.MsgActionSubmit}, transfer.Serialize()...)); err != nil {
+			if err := conn.Send(append([]byte{messages.MsgActionSubmit}, transfer.Serialize()...)); err != nil {
 				fmt.Println(err)
 				return
 			}
@@ -148,7 +149,7 @@ func TestSwell() {
 			log.Print(err)
 			return
 		}
-		request := []byte{chain.MsgSyncRequest}
+		request := []byte{messages.MsgSyncRequest}
 		util.PutUint64(0, &request)
 		util.PutBool(false, &request)
 		conn.Send(request)
@@ -159,13 +160,13 @@ func TestSwell() {
 				return
 			}
 			if len(bytes) > 0 {
-				if bytes[0] == chain.MsgBlockSealed {
+				if bytes[0] == messages.MsgSealedBlock {
 					sealed := chain.ParseSealedBlock(bytes[1:])
 					if sealed != nil {
 					} else {
 						fmt.Println("could not parse sealed block")
 					}
-				} else if bytes[0] == chain.MsgBlockCommitted {
+				} else if bytes[0] == messages.MsgCommittedBlock {
 					commit := chain.ParseCommitBlock(bytes[1:])
 					if commit != nil {
 					} else {
