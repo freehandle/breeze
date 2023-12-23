@@ -12,6 +12,7 @@ import (
 	"log"
 	"log/slog"
 	"net"
+	"time"
 
 	"github.com/freehandle/breeze/consensus/messages"
 	"github.com/freehandle/breeze/crypto"
@@ -188,7 +189,7 @@ func Run(ctx context.Context, config Config) (*Node, error) {
 				if err != nil {
 					conn.Close()
 				}
-				go WaitForOutgoingSyncRequest(trustedConn, newBlockListener)
+				go WaitForOutgoingSyncRequest(trustedConn, newBlockListener, action)
 			} else {
 				slog.Warn("poa outgoing listener error", "error", err)
 				return
@@ -225,7 +226,7 @@ func Run(ctx context.Context, config Config) (*Node, error) {
 func WaitForProtocolActions(conn *socket.SignedConnection, terminate chan crypto.Token, action chan []byte) {
 	for {
 		data, err := conn.Read()
-		if err != nil || len(data) < 2 || (data[0] != messages.MsgActionSubmit && data[0] != messages.MsgChecksumStatement) {
+		if err != nil || len(data) < 2 || data[0] != messages.MsgActionSubmit {
 			if err != nil {
 				slog.Info("poa WaitForProtocolActions: connection terminated", "connection", err)
 			} else {
@@ -235,29 +236,41 @@ func WaitForProtocolActions(conn *socket.SignedConnection, terminate chan crypto
 			terminate <- conn.Token
 			return
 		}
+		if data[0] == messages.MsgChecksumStatement {
+			fmt.Println("got checksum statement")
+		}
 		action <- data
-
 	}
 }
 
 // WaitForOutgoingSyncRequest reads a sync request from a connection and sends
 // it to the sync request channel. If it is not a valid request, if closes the
 // conection and returns without sending anything to outgoing channel.
-func WaitForOutgoingSyncRequest(conn *socket.SignedConnection, outgoing chan SyncRequest) {
-	data, err := conn.Read()
-	if err != nil || len(data) != 10 || data[0] != messages.MsgSyncRequest {
-		if err != nil {
-			slog.Info("poa WaitForOutgoingSyncRequest: connection terminated", "connection", err)
-		} else {
-			slog.Info("poa WaitForOutgoingSyncRequest: invalid sync request", "connection", conn.Token)
+func WaitForOutgoingSyncRequest(conn *socket.SignedConnection, outgoing chan SyncRequest, action chan []byte) {
+	lastSync := time.Now().Add(-time.Hour)
+	for {
+		data, err := conn.Read()
+		if err != nil || len(data) < 10 || (data[0] != messages.MsgSyncRequest && data[0] != messages.MsgChecksumStatement) {
+			if err != nil {
+				slog.Info("poa WaitForOutgoingSyncRequest: connection terminated", "connection", err)
+			} else {
+				slog.Info("poa WaitForOutgoingSyncRequest: invalid sync request", "connection", conn.Token)
+			}
+			conn.Shutdown()
+			return
 		}
-		conn.Shutdown()
-		return
+		if data[0] == messages.MsgSyncRequest {
+			if time.Since(lastSync) > time.Minute {
+				lastSync = time.Now()
+				epoch, position := util.ParseUint64(data, 1)
+				state, _ := util.ParseBool(data, position)
+				cached := socket.NewCachedConnection(conn)
+				outgoing <- SyncRequest{Conn: cached, Epoch: epoch, State: state}
+			}
+		} else if data[0] == messages.MsgChecksumStatement {
+			action <- data
+		}
 	}
-	epoch, position := util.ParseUint64(data, 1)
-	state, _ := util.ParseBool(data, position)
-	cached := socket.NewCachedConnection(conn)
-	outgoing <- SyncRequest{Conn: cached, Epoch: epoch, State: state}
 }
 
 // AdminMsgType processes messages received from connection over the admin port.

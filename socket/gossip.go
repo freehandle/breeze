@@ -257,13 +257,14 @@ func GroupGossip(epoch uint64, connections []*ChannelConnection) *Gossip {
 // a channel for the slice of connections. The channel will be populated with all
 // the connections that were possible to establish.
 func AssembleChannelNetwork(peers []CommitteeMember, credentials crypto.PrivateKey, port int, hostname string, existing []*ChannelConnection) []*ChannelConnection {
+	peersMembers := make([]CommitteeMember, len(peers))
 	for n, peer := range peers {
-		peers[n] = CommitteeMember{
+		peersMembers[n] = CommitteeMember{
 			Address: fmt.Sprintf("%v:%v", peer.Address, port),
 			Token:   peer.Token,
 		}
 	}
-	committee := AssembleCommittee[*ChannelConnection](peers, existing, NewChannelConnection, credentials, port, hostname)
+	committee := AssembleCommittee[*ChannelConnection](peersMembers, existing, NewChannelConnection, credentials, port, hostname)
 	members := <-committee
 	return members
 }

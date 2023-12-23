@@ -71,6 +71,20 @@ func (pos *ProofOfStake) DeterminePool(chain *chain.Blockchain, candidates []cry
 	return validated
 }
 
+type Permissionless struct{}
+
+func (p Permissionless) Punish(duplicates *bft.Duplicate, weights map[crypto.Token]int) map[crypto.Token]uint64 {
+	return nil
+}
+
+func (p Permissionless) DeterminePool(chain *chain.Blockchain, candidates []crypto.Token) map[crypto.Token]int {
+	validated := make(map[crypto.Token]int)
+	for _, token := range candidates {
+		validated[token] = 1
+	}
+	return validated
+}
+
 // NewProofOfStake returns a new empty ProofOfStake.
 func NewProofOfAuthority() *ProofOfAuthority {
 	return &ProofOfAuthority{

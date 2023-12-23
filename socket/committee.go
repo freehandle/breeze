@@ -112,8 +112,7 @@ func newPool[T TokenComparer](peers []CommitteeMember, connected []T, token cryp
 func AssembleCommittee[T TokenComparer](peers []CommitteeMember, connected []T, NewT func(*SignedConnection) T, credentials crypto.PrivateKey, port int, hostname string) chan []T {
 	done := make(chan []T, 2)
 	pool := newPool(peers, connected, credentials.PublicKey(), NewT)
-
-	listener, err := Listen(fmt.Sprintf(":%v", port))
+	listener, err := Listen(fmt.Sprintf("%v:%v", hostname, port))
 	if err != nil {
 		slog.Warn("BuilderCommittee: could not listen on port", "port", port, "error", err)
 		done <- nil

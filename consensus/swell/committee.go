@@ -1,6 +1,7 @@
 package swell
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/freehandle/breeze/consensus/messages"
@@ -65,6 +66,7 @@ func (c *Committee) Serialize() []byte {
 }
 
 func ParseCommitee(bytes []byte) ([]crypto.Token, []socket.CommitteeMember) {
+	fmt.Println("ParseCommitee", bytes)
 	if len(bytes) < 1 || bytes[0] != messages.MsgNetworkTopologyResponse {
 		return nil, nil
 	}
@@ -81,7 +83,7 @@ func ParseCommitee(bytes []byte) ([]crypto.Token, []socket.CommitteeMember) {
 	if position >= len(bytes) {
 		return nil, nil
 	}
-	validatorCount, position = util.ParseUint16(bytes, 1)
+	validatorCount, position = util.ParseUint16(bytes, position)
 	for n := uint16(0); n < validatorCount; n++ {
 		member := socket.CommitteeMember{}
 		member.Token, position = util.ParseToken(bytes, position)
@@ -117,6 +119,7 @@ func BroadcastPercolationRule(nodecount int) socket.PercolationRule {
 }
 
 func sortCandidates(candidates map[crypto.Token]int, seed []byte, committeeSize int) []crypto.Token {
+	fmt.Println("sortCandidates", len(candidates), committeeSize)
 	hashes := make(TokenHashArray, 0)
 	for token, weight := range candidates {
 		for w := 1; w <= weight; w++ {

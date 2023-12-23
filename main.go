@@ -63,7 +63,7 @@ func TestSwell() {
 			MaxCommitteeSize: 100,
 			BlockInterval:    time.Second,
 			ChecksumWindow:   20,
-			Permission:       permission.NewProofOfAuthority(),
+			Permission:       permission.Permissionless{},
 		},
 		Relay:    relayNode,
 		Hostname: "mainserver",
@@ -113,7 +113,7 @@ func TestSwell() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		time.Sleep(2 * time.Second)
+		time.Sleep(4 * time.Second)
 		provider := socket.TokenAddr{
 			Addr:  "mainserver:3031",
 			Token: mainserver.PublicKey(),
@@ -127,7 +127,7 @@ func TestSwell() {
 				MaxCommitteeSize: 100,
 				BlockInterval:    time.Second,
 				ChecksumWindow:   20,
-				Permission:       permission.NewProofOfAuthority(),
+				Permission:       permission.Permissionless{},
 			},
 			Relay:    relayNode,
 			Hostname: "candidate",

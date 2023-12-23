@@ -1,6 +1,7 @@
 package swell
 
 import (
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -23,10 +24,9 @@ import (
 func RunValidator(c *Window) {
 	epoch := c.Start
 	startEpoch := c.Node.Timer(epoch)
-
+	slog.Info("RunValidator: starting new window", "starting at", epoch)
 	// to receive confirmations from the goroutines responsi
 	c.newBlock = make(chan BlockConsensusConfirmation)
-
 	//checksumEpoch := (c.Start + c.End) / 2
 	//hasCheckpoint := make(chan bool)
 	//requestedChecksum := false
@@ -36,6 +36,9 @@ func RunValidator(c *Window) {
 		for {
 			select {
 			case <-startEpoch.C:
+				if epoch > c.End {
+					return
+				}
 				c.Node.actions.Epoch <- epoch
 				if c.IsPoolMember(epoch) {
 					if len(c.Committee.weights) == 1 {
@@ -60,6 +63,8 @@ func RunValidator(c *Window) {
 		for {
 			select {
 			case syncRequest := <-c.Node.relay.SyncRequest:
+				msg := append([]byte{messages.MsgCommittee}, c.Committee.Serialize()...)
+				syncRequest.Conn.SendDirect(msg)
 				if syncRequest.State {
 					go c.Node.blockchain.SyncState(syncRequest.Conn)
 				} else {
@@ -68,7 +73,8 @@ func RunValidator(c *Window) {
 			case statement := <-c.Node.relay.Statement:
 				checksumStatement := chain.ParseChecksumStatement(statement)
 				if checksumStatement != nil {
-					c.incorporateStatement(checksumStatement, epoch)
+					c.unpublished = append(c.unpublished, checksumStatement)
+					//c.incorporateStatement(checksumStatement, epoch)
 				}
 			case consensus := <-c.newBlock:
 				if consensus.Status {
@@ -124,6 +130,7 @@ func RunValidator(c *Window) {
 // others nodes proposals. In due time node re-arranges validator pool.
 // Uppon exclusion a node can transition to a listener node.
 func (w *Window) RunEpoch(epoch uint64) {
+	fmt.Println("bora la roda uma epoch")
 	windowStart := int(w.Start)
 	leaderCount := (int(epoch) - windowStart) % len(w.Committee.order)
 	leaderToken := w.Committee.order[leaderCount]
@@ -152,15 +159,21 @@ func (w *Window) RunEpoch(epoch uint64) {
 			}
 		}
 	}
+	fmt.Println("montar ChannelNetwork", peers)
 	bftConnections := socket.AssembleChannelNetwork(peers, w.Node.credentials, 5401, w.Node.hostname, w.Committee.consensus)
+	fmt.Println("montar GossipNEwtowk")
 	committee.Gossip = socket.GroupGossip(epoch, bftConnections)
+	fmt.Println("montar Pool")
 	pool := bft.LaunchPooling(*committee, w.Node.credentials)
 	leader := w.Committee.order[leaderCount]
+	fmt.Println("tudo montado")
 	go func() {
 		ok := false
 		if leader.Equal(w.Node.credentials.PublicKey()) {
+			fmt.Println("líder")
 			ok = w.BuildBlock(epoch, pool)
 		} else {
+			fmt.Println("Partiu lá, vamos ouvir")
 			leader, others := w.Committee.blocks.GetLeader(leaderToken)
 			if leader != nil {
 				ok = w.ListenToBlock(leader, others, pool)
@@ -193,7 +206,6 @@ func (w *Window) BuildSoloBLock(epoch uint64) bool {
 			} else {
 				w.AddSealedBlock(sealed)
 				w.Node.relay.BlockEvents <- messages.SealedBlock(sealed.Serialize())
-				slog.Info("BuildBlock: sealed own block", "epoch", epoch, "hash", crypto.EncodeHash(sealed.Seal.Hash))
 				return true
 			}
 		}
@@ -227,7 +239,6 @@ func (w *Window) BuildBlock(epoch uint64, pool *bft.Pooling) bool {
 				if sealed != nil {
 					hash = sealed.Seal.Hash
 					msg := messages.BlockSealMessage(epoch, sealed.Seal.Serialize())
-					slog.Info("BuildBlock: sealed block proposed for consensus", "epoch", epoch, "hash", crypto.EncodeHash(hash))
 					w.Committee.blocks.Send(epoch, msg)
 				} else {
 					slog.Warn("BuildBlock: could not seal own block")

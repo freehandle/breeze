@@ -237,7 +237,7 @@ func (a *ActionStore) push(data []byte) {
 // epochs older than MaxActionDelay.
 func (a *ActionStore) moveNext(epoch uint64) {
 	if epoch != a.currentEpoch+1 {
-		slog.Error("ActionStore: non sequential epoch update", "proposed", epoch, "current", a.currentEpoch)
+		slog.Warn("ActionStore: non sequential epoch update", "proposed", epoch, "current", a.currentEpoch)
 	}
 	a.currentEpoch = epoch
 	if epoch > MaxActionDelay {

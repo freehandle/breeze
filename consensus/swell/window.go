@@ -2,6 +2,7 @@ package swell
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/freehandle/breeze/consensus/chain"
@@ -44,7 +45,7 @@ func (w *Window) incorporateStatement(statement *chain.ChecksumStatement, epoch 
 			}
 			hash := crypto.Hasher(append(published.Node[:], statement.Hash[:]...))
 			if published.Hash.Equal(hash) {
-				slog.Info("Window.incorporateStatement: new naked", "node", statement.Node, "epoch", statement.Epoch, "hash", crypto.EncodeHash(statement.Hash), "block", epoch)
+				slog.Info("Window: new naked checksum published", "hostname", w.Node.hostname, "node", statement.Node, "epoch", statement.Epoch, "hash", crypto.EncodeHash(statement.Hash), "block", epoch)
 				w.published = append(w.published, statement)
 			} else {
 				slog.Error("Window.incorporateStatement: incompatible naked", "node", statement.Node, "epoch", statement.Epoch)
@@ -53,7 +54,7 @@ func (w *Window) incorporateStatement(statement *chain.ChecksumStatement, epoch 
 		}
 	}
 	if !statement.Naked {
-		slog.Info("Window.incorporateStatement: new dressed", "node", statement.Node, "epoch", statement.Epoch, "hash", crypto.EncodeHash(statement.Hash), "block", epoch)
+		slog.Info("Widow: new dressed checksum published", "hostname", w.Node.hostname, "node", statement.Node, "epoch", statement.Epoch, "hash", crypto.EncodeHash(statement.Hash), "block", epoch)
 		w.published = append(w.published, statement)
 	}
 }
@@ -101,8 +102,10 @@ func (w *Window) PrepareNewWindow() {
 			preCandidates = append(preCandidates, statement.Node)
 		}
 	}
+	fmt.Println("precandidates", len(preCandidates))
 	// permissioned = preCandidates after permission winth permissioned
 	permissioned := w.Node.config.Permission.DeterminePool(w.Node.blockchain, preCandidates)
+	fmt.Println("permissioned", len(permissioned))
 	// candidates = permissioned sorted by swell committee rule
 	candidates := sortCandidates(permissioned, consenusHash[:], w.Node.config.MaxCommitteeSize)
 
@@ -180,15 +183,17 @@ func (w *Window) DressedChecksumStatement(epoch uint64) *chain.ChecksumStatement
 	checkEpoch := (w.Start + w.End) / 2
 	token := w.Node.credentials.PublicKey()
 	dressed := crypto.Hasher(append(token[:], w.Node.blockchain.NextChecksum.Hash[:]...))
+	w.candidate.Dressed = true
 	return chain.NewCheckSum(checkEpoch, w.Node.credentials, w.Node.hostname, false, dressed)
 }
 
 func (w *Window) NakedChecksumWindow(epoch uint64) *chain.ChecksumStatement {
 	window := w.End - w.Start
-	if !w.candidate.Naked || w.Node.blockchain.NextChecksum == nil || epoch < w.Start+8*window/10 || epoch >= w.Start+9*window/10 {
+	if w.candidate.Naked || w.Node.blockchain.NextChecksum == nil || epoch < w.Start+8*window/10 || epoch >= w.Start+9*window/10 {
 		return nil
 	}
 	checkEpoch := (w.Start + w.End) / 2
+	w.candidate.Naked = true
 	return chain.NewCheckSum(checkEpoch, w.Node.credentials, w.Node.hostname, true, w.Node.blockchain.NextChecksum.Hash)
 }
 
@@ -219,8 +224,10 @@ func getConsensusHash(statements []*chain.ChecksumStatement, members map[crypto.
 	weightPerHash := make(map[crypto.Hash]int)
 	for _, statement := range statements {
 		if statement.Naked {
+			fmt.Println("statement", crypto.EncodeHash(statement.Hash))
 			weight := weightPerHash[statement.Hash] + members[statement.Node]
 			weightPerHash[statement.Hash] = weight
+
 			if weight > 2*totalweight/3 {
 				return statement.Hash, true
 			}

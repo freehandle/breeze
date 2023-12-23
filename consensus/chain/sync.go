@@ -74,7 +74,7 @@ func (c *Blockchain) SyncState(conn *socket.CachedConnection) {
 	util.PutHash(c.Checksum.Hash, &checksum)
 	util.PutHash(c.Checksum.LastBlockHash, &checksum)
 
-	if err := conn.SendDirect(append([]byte{messages.MsgSyncChecksum}, util.Uint64ToBytes(c.Checksum.Epoch)...)); err != nil {
+	if err := conn.SendDirect(checksum); err != nil {
 		slog.Error("sync state: could not send checksum sync", "err", err)
 		conn.Close()
 		return
@@ -85,6 +85,7 @@ func (c *Blockchain) SyncState(conn *socket.CachedConnection) {
 		conn.Close()
 		return
 	}
+
 	if err := conn.SendDirect(append([]byte{messages.MsgSyncStateDeposits}, deposits...)); err != nil {
 		slog.Error("sync state: could not send wallets", "err", err)
 		conn.Close()

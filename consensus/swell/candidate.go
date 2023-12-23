@@ -70,11 +70,11 @@ func RunNonValidatorNode(w *Window, conn *socket.SignedConnection, candidate boo
 							cancelFunc()
 						}
 					} else if statement := w.DressedChecksumStatement(w.Node.blockchain.LastCommitEpoch); statement != nil {
-						slog.Info("RunNonValidatorNode: sending dressed checksum", "window start", w.Start, "checksum", crypto.EncodeHash(statement.Hash))
-						conn.Send(append([]byte{CandidateMsg}, statement.Serialize()...))
+						slog.Info("Window: non validator candidate node sending dressed checksum", "window start", w.Start, "checksum", crypto.EncodeHash(statement.Hash))
+						conn.Send(append([]byte{messages.MsgChecksumStatement}, statement.Serialize()...))
 					} else if statement := w.NakedChecksumWindow(w.Node.blockchain.LastCommitEpoch); statement != nil {
-						slog.Info("RunNonValidatorNode: sending naked checksum", "window start", w.Start, "checksum", crypto.EncodeHash(statement.Hash))
-						conn.Send(append([]byte{CandidateMsg}, statement.Serialize()...))
+						slog.Info("Window: non validator candidate node sending naked checksum", "window start", w.Start, "checksum", crypto.EncodeHash(statement.Hash))
+						conn.Send(append([]byte{messages.MsgChecksumStatement}, statement.Serialize()...))
 					}
 				}
 			}

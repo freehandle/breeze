@@ -100,7 +100,8 @@ func BlockchainFromGenesisState(credentials crypto.PrivateKey, walletPath string
 	if genesis == nil {
 		return nil
 	}
-	return &Blockchain{
+	cloned := genesis.Clone()
+	blockchain := &Blockchain{
 		mu:              sync.Mutex{},
 		NetworkHash:     hash,
 		Credentials:     credentials,
@@ -111,9 +112,9 @@ func BlockchainFromGenesisState(credentials crypto.PrivateKey, walletPath string
 		RecentBlocks:    make([]*CommitBlock, 0),
 		Checksum: &Checksum{
 			Epoch:         0,
-			State:         genesis,
+			State:         cloned,
 			LastBlockHash: crypto.HashToken(credentials.PublicKey()),
-			Hash:          crypto.HashToken(credentials.PublicKey()),
+			Hash:          cloned.ChecksumHash(),
 		},
 		Clock: ClockSyncronization{
 			Epoch:     0,
@@ -122,6 +123,8 @@ func BlockchainFromGenesisState(credentials crypto.PrivateKey, walletPath string
 		BlockInterval:  interval,
 		ChecksumWindow: cehcksumWindow,
 	}
+	slog.Info("gensis state created", "token", credentials.PublicKey(), "genesis hash", crypto.EncodeHash(blockchain.Checksum.Hash))
+	return blockchain
 }
 
 // TimestampBlock returns the time at which a block with the provided epoch
@@ -142,7 +145,7 @@ func (b *Blockchain) Timer(epoch uint64) *time.Timer {
 // BlockchainFromChecksumState recreates a blockchain from a given checksum
 // state. Checksum state typically comes from a peer node sync job.
 func BlockchainFromChecksumState(c *Checksum, clock ClockSyncronization, credentials crypto.PrivateKey, networkHash crypto.Hash, interval time.Duration, checksumWindow int) *Blockchain {
-	return &Blockchain{
+	blockchain := &Blockchain{
 		mu:              sync.Mutex{},
 		NetworkHash:     networkHash,
 		Credentials:     credentials,
@@ -156,6 +159,8 @@ func BlockchainFromChecksumState(c *Checksum, clock ClockSyncronization, credent
 		BlockInterval:   interval,
 		ChecksumWindow:  checksumWindow,
 	}
+	slog.Info("blockchain created", "check epoch", blockchain.Checksum.Epoch, "checksum hash", crypto.EncodeHash(blockchain.Checksum.Hash))
+	return blockchain
 }
 
 // NextBlock returns a block header for the next block to be proposed. It
@@ -233,13 +238,13 @@ func (c *Blockchain) AddSealedBlock(sealed *SealedBlock) {
 		return
 	}
 	if sealed.Header.Epoch <= c.LastCommitEpoch {
-		slog.Warn("Blockchain: AddSealedBlock: cannot add sealed block before last commit")
+		slog.Warn("Blockchain: cannot add sealed block before last commit")
 		return
 	}
 	hasFound := false
 	for n, existing := range c.SealedBlocks {
 		if existing.Header.Epoch == sealed.Header.Epoch {
-			slog.Warn("Blockchain: AddSealedBlock: cannot add sealed block for existing epoch")
+			slog.Warn("Blockchain: cannot add sealed block for existing epoch")
 			return
 		} else if existing.Header.Epoch > sealed.Header.Epoch {
 			c.SealedBlocks = append(c.SealedBlocks[0:n], append([]*SealedBlock{sealed}, c.SealedBlocks[n:]...)...)
@@ -250,7 +255,7 @@ func (c *Blockchain) AddSealedBlock(sealed *SealedBlock) {
 	if !hasFound {
 		c.SealedBlocks = append(c.SealedBlocks, sealed)
 	}
-	slog.Info("Blockchain: AddSealedBlock: added sealed block", "epoch", sealed.Header.Epoch, "hash", crypto.EncodeHash(sealed.Seal.Hash))
+	slog.Info("Blockchain: added sealed block", "epoch", sealed.Header.Epoch, "hash", crypto.EncodeHash(sealed.Seal.Hash), "publisher", sealed.Header.Proposer)
 	if !c.Cloning {
 		c.CommitChain()
 	}

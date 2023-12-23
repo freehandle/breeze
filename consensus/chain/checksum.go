@@ -1,7 +1,6 @@
 package chain
 
 import (
-	"fmt"
 	"log/slog"
 
 	"github.com/freehandle/breeze/crypto"
@@ -13,7 +12,6 @@ import (
 // state. It returns a true value on the provided channel if the clone
 // operation was successful. Otherwise, it returns false.
 func (c *Blockchain) MarkCheckpoint() {
-	fmt.Println("tmj")
 	c.mu.Lock()
 	c.Cloning = true
 	go func() {
@@ -21,7 +19,7 @@ func (c *Blockchain) MarkCheckpoint() {
 		hash := c.LastCommitHash
 		clonedState := c.CommitState.Clone()
 		if clonedState == nil {
-			fmt.Println("cloned state is nil")
+			slog.Error("MarkChekpoint: cloned state is nil")
 			return
 		}
 		c.NextChecksum = &Checksum{
@@ -31,8 +29,7 @@ func (c *Blockchain) MarkCheckpoint() {
 			Hash:          clonedState.ChecksumHash(),
 		}
 		c.Cloning = false
-		slog.Info("MarkCheckPoint: job completed", "epoch", c.NextChecksum.Epoch, "hash", c.NextChecksum.Hash)
-		fmt.Println(c.Checksum.Hash)
+		slog.Info("Blockchain: checkpoint calculation job completed", "epoch", c.NextChecksum.Epoch, "last block", c.NextChecksum.LastBlockHash, "cehckpoint hash", c.NextChecksum.Hash)
 	}()
 	c.mu.Unlock()
 
@@ -101,6 +98,7 @@ func ParseChecksumStatement(data []byte) *ChecksumStatement {
 // ParseChecksumStatementPosition parses a ChecksumStatement in the middle of
 // a byte slice and returns the parsed ChecksumStatement and the position
 func ParseChecksumStatementPosition(data []byte, position int) (*ChecksumStatement, int) {
+	initial := position
 	dressed := ChecksumStatement{}
 	dressed.Epoch, position = util.ParseUint64(data, position)
 	dressed.Node, position = util.ParseToken(data, position)
@@ -108,10 +106,10 @@ func ParseChecksumStatementPosition(data []byte, position int) (*ChecksumStateme
 	dressed.Naked, position = util.ParseBool(data, position)
 	dressed.Hash, position = util.ParseHash(data, position)
 	dressed.Signature, _ = util.ParseSignature(data, position)
-	if dressed.Node.Verify(data[0:position], dressed.Signature) {
-		return &dressed, position
+	if dressed.Node.Verify(data[initial:position], dressed.Signature) {
+		return &dressed, position + crypto.SignatureSize
 	}
-	return nil, len(data)
+	return nil, position + crypto.SignatureSize
 }
 
 // IsDressed returns true if the naked ChecksumStatement is compatible with the

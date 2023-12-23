@@ -7,6 +7,8 @@ import (
 
 	"github.com/freehandle/breeze/consensus/chain"
 	"github.com/freehandle/breeze/consensus/messages"
+	"github.com/freehandle/breeze/consensus/store"
+	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/protocol/state"
 	"github.com/freehandle/breeze/socket"
 	"github.com/freehandle/breeze/util"
@@ -21,6 +23,7 @@ func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync soc
 	if err != nil {
 		return err
 	}
+
 	bytes := []byte{messages.MsgSyncRequest}
 	util.PutUint64(0, &bytes)
 	util.PutBool(true, &bytes)
@@ -29,6 +32,30 @@ func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync soc
 	clock := chain.ClockSyncronization{}
 
 	msg, err := conn.Read()
+	if err != nil {
+		return err
+	}
+	if len(msg) < 1 || msg[0] != messages.MsgCommittee {
+		return errors.New("invalid committee message type")
+	}
+	order, validators := ParseCommitee(msg[1:])
+	if len(order) == 0 || len(validators) == 0 {
+		fmt.Println(order, validators)
+		return errors.New("invalid committee message")
+	}
+	weights := make(map[crypto.Token]int)
+	for _, token := range order {
+		weights[token] += 1
+	}
+	committe := Committee{
+		hostname:    config.Hostname,
+		credentials: config.Credentials,
+		order:       order,
+		weights:     weights,
+		validators:  validators,
+	}
+
+	msg, err = conn.Read()
 	if err != nil {
 		return err
 	}
@@ -46,17 +73,20 @@ func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync soc
 
 	node := &SwellNode{
 		blockchain:  chain.BlockchainFromChecksumState(checksum, clock, config.Credentials, config.SwellConfig.NetworkHash, config.SwellConfig.BlockInterval, config.SwellConfig.ChecksumWindow),
-		actions:     config.Actions,
+		actions:     store.NewActionStore(ctx, checksum.Epoch),
 		credentials: config.Credentials,
 		config:      config.SwellConfig,
 		relay:       config.Relay,
+		hostname:    config.Hostname,
 	}
+	RunActionsGateway(ctx, config.Relay.ActionGateway, node.actions)
 	windowDuration := uint64(config.SwellConfig.ChecksumWindow)
 	windowStart := windowDuration*(checksum.Epoch/windowDuration) + 1
 	window := Window{
 		ctx:         ctx,
 		Start:       windowStart,
 		End:         windowStart + windowDuration - 1,
+		Committee:   &committe,
 		Node:        node,
 		newBlock:    make(chan BlockConsensusConfirmation),
 		unpublished: make([]*chain.ChecksumStatement, 0),
@@ -82,8 +112,7 @@ func syncChecksum(conn *socket.SignedConnection, walletPath string) (*chain.Chec
 	position := 1
 	checksum.Epoch, position = util.ParseUint64(msg, position)
 	checksum.Hash, position = util.ParseHash(msg, position)
-	checksum.LastBlockHash, position = util.ParseHash(msg, position)
-
+	checksum.LastBlockHash, _ = util.ParseHash(msg, position)
 	checksum.State = &state.State{
 		Epoch: checksum.Epoch,
 	}
@@ -95,7 +124,6 @@ func syncChecksum(conn *socket.SignedConnection, walletPath string) (*chain.Chec
 	if len(msg) < 1 || msg[0] != messages.MsgSyncStateWallets {
 		return nil, errors.New("invalid sync wallet message")
 	}
-	fmt.Println("wallet", len(msg))
 	if walletPath != "" {
 		checksum.State.Wallets = state.NewFileWalletStoreFromBytes(walletPath, "wallet", msg[1:])
 	} else {
@@ -114,6 +142,12 @@ func syncChecksum(conn *socket.SignedConnection, walletPath string) (*chain.Chec
 		checksum.State.Deposits = state.NewFileWalletStoreFromBytes(walletPath, "deposit", msg[1:])
 	} else {
 		checksum.State.Deposits = state.NewMemoryWalletStoreFromBytes("deposit", msg[1:])
+	}
+
+	stateHash := checksum.State.ChecksumHash()
+	if !stateHash.Equal(checksum.Hash) {
+		fmt.Println("deu ruim", crypto.EncodeHash(stateHash), crypto.EncodeHash(checksum.Hash))
+		return nil, errors.New("invalid state hash")
 	}
 	return &checksum, nil
 }
