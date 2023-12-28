@@ -47,7 +47,10 @@ func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync soc
 	for _, token := range order {
 		weights[token] += 1
 	}
+	ctx, cancel := context.WithCancel(ctx)
 	committe := Committee{
+		ctx:         ctx,
+		cancel:      cancel,
 		hostname:    config.Hostname,
 		credentials: config.Credentials,
 		order:       order,

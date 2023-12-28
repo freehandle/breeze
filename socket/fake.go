@@ -3,7 +3,6 @@ package socket
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -145,14 +144,23 @@ type testHost struct {
 
 // testPort implementar a port on a testHost for testing purposes. It accepts
 // connections a that port.
-type testPort struct {
+/*type testPort struct {
+	mu     sync.Mutex
 	Port   string
 	Node   *testHost
 	accept chan net.Conn
+	Live   bool
 }
 
 func (t *testPort) Close() error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if !t.Live {
+		return errors.New("port already closed")
+	}
 	delete(t.Node.network.listeners, fmt.Sprintf("%v:%v", t.Node.hostname, t.Port))
+	close(t.accept)
+	t.Live = false
 	return nil
 }
 
@@ -167,13 +175,15 @@ func (t *testPort) Accept() (net.Conn, error) {
 	}
 	return conn, nil
 }
+*/
 
 // testNetwork defines a local network for testing purposes. all hosts must be
 // declared before usage.
 type testNetwork struct {
-	hosts     map[string]*testHost
-	ctx       context.Context
-	listeners map[string]*testPort
+	hosts map[string]*testHost
+	ctx   context.Context
+	//listeners map[string]*testPort
+	listeners map[string]*fakePort
 	live      []net.Conn
 }
 
@@ -181,7 +191,7 @@ type testNetwork struct {
 var TCPNetworkTest = &testNetwork{
 	hosts:     make(map[string]*testHost),
 	ctx:       context.Background(),
-	listeners: make(map[string]*testPort),
+	listeners: make(map[string]*fakePort),
 	live:      make([]net.Conn, 0),
 }
 
@@ -195,13 +205,12 @@ func (t *testNetwork) Dial(hostname, address string) (net.Conn, error) {
 	}
 	for n := 0; n < 3; n++ {
 		if listener, ok := t.listeners[address]; ok {
-			dialerConn, listenerConn := net.Pipe()
-			listenetWithLatency := withLatency(listenerConn, host.latency+listener.Node.latency)
-			listener.accept <- listenetWithLatency
-			listener.Node.connections = append(listener.Node.connections, listenetWithLatency)
-			dialerWithLatency := withLatency(dialerConn, host.latency+listener.Node.latency)
-			host.connections = append(host.connections, dialerWithLatency)
-			return dialerWithLatency, nil
+			conn, err := listener.Connect(host.latency)
+			if err == nil {
+				host.connections = append(host.connections, conn)
+				return conn, nil
+			}
+			return nil, err
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
@@ -223,11 +232,7 @@ func (t *testNetwork) Listen(address string) (net.Listener, error) {
 	if _, ok := t.listeners[address]; ok {
 		return nil, errors.New("port already in use")
 	}
-	test := &testPort{
-		Port:   port,
-		Node:   host,
-		accept: make(chan net.Conn),
-	}
+	test := newFakePort(port, host)
 	t.listeners[address] = test
 	return test, nil
 

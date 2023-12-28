@@ -2,7 +2,6 @@ package swell
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 
 	"github.com/freehandle/breeze/consensus/chain"
@@ -102,10 +101,8 @@ func (w *Window) PrepareNewWindow() {
 			preCandidates = append(preCandidates, statement.Node)
 		}
 	}
-	fmt.Println("precandidates", len(preCandidates))
 	// permissioned = preCandidates after permission winth permissioned
 	permissioned := w.Node.config.Permission.DeterminePool(w.Node.blockchain, preCandidates)
-	fmt.Println("permissioned", len(permissioned))
 	// candidates = permissioned sorted by swell committee rule
 	candidates := sortCandidates(permissioned, consenusHash[:], w.Node.config.MaxCommitteeSize)
 
@@ -146,7 +143,7 @@ func (w *Window) PrepareNewWindow() {
 		if w.Committee != nil {
 			next.Committee = w.Committee.PrepareNext(validators)
 		} else {
-			next.Committee = LaunchValidatorPool(validators, w.Node.credentials, w.Node.hostname)
+			next.Committee = LaunchValidatorPool(w.ctx, validators, w.Node.credentials, w.Node.hostname)
 		}
 		if next.Committee == nil {
 			slog.Warn("PrepareNewWindow: could not launch validator pool", "start", next.Start)
@@ -224,7 +221,6 @@ func getConsensusHash(statements []*chain.ChecksumStatement, members map[crypto.
 	weightPerHash := make(map[crypto.Hash]int)
 	for _, statement := range statements {
 		if statement.Naked {
-			fmt.Println("statement", crypto.EncodeHash(statement.Hash))
 			weight := weightPerHash[statement.Hash] + members[statement.Node]
 			weightPerHash[statement.Hash] = weight
 

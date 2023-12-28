@@ -53,6 +53,7 @@ func LaunchPooling(committee PoolingCommittee, credentials crypto.PrivateKey) *P
 					if vote == nil {
 						continue
 					}
+					//fmt.Printf("%v got vote from %v\n\n", credentials.PublicKey(), vote.Token)
 					if w, ok := committee.Members[vote.Token]; ok {
 						vote.Weight = w.Weight
 					}

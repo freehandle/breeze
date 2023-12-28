@@ -1,8 +1,10 @@
 package socket
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/freehandle/breeze/crypto"
@@ -14,6 +16,12 @@ const (
 	//ChannelConnMaxBuffer = 1000
 )
 
+type epochChannel struct {
+	epoch    uint64
+	signal   chan []byte
+	response chan bool
+}
+
 // ChannelConnection is a wrapper around a SignedConnection that separates
 // messages by epoch and routes them to dedicated byte array channels. The
 // epoch is store between byte 1 and byte 8 of the message. If there is an
@@ -21,16 +29,21 @@ const (
 // it is discarded. The connection can be sent into iddle mode, in which case
 // all messages received are simply ignored.
 type ChannelConnection struct {
-	Conn    *SignedConnection
-	Signal  map[uint64]chan []byte
-	release chan uint64
-	Iddle   bool
-	Live    bool
+	Conn     *SignedConnection
+	Signal   map[uint64]chan []byte
+	release  chan uint64
+	register chan *epochChannel
+	Iddle    bool
+	Live     bool
 }
 
 // Is returns true if the token of the connection is equal to the given token.
 func (c *ChannelConnection) Is(token crypto.Token) bool {
 	return c.Conn.Token.Equal(token)
+}
+
+func (c *ChannelConnection) Shutdown() {
+	c.Conn.Shutdown()
 }
 
 // Activate sets the connection to active mode, in which case messages are
@@ -46,8 +59,10 @@ func (c *ChannelConnection) Sleep() {
 }
 
 // Register registers a new channel for a given epoch.
-func (c *ChannelConnection) Register(epoch uint64, signal chan []byte) {
-	c.Signal[epoch] = signal
+func (c *ChannelConnection) Register(epoch uint64, signal chan []byte) bool {
+	resp := make(chan bool)
+	c.register <- &epochChannel{epoch: epoch, signal: signal, response: resp}
+	return <-resp
 }
 
 // Release releases a channel for a given epoch. If epoch = 0, it releases all
@@ -79,10 +94,11 @@ func (c *ChannelConnection) Read(epoch uint64) []byte {
 // connection.
 func NewChannelConnection(conn *SignedConnection) *ChannelConnection {
 	channel := &ChannelConnection{
-		Conn:    conn,
-		Signal:  make(map[uint64]chan []byte),
-		release: make(chan uint64),
-		Live:    true,
+		Conn:     conn,
+		Signal:   make(map[uint64]chan []byte),
+		release:  make(chan uint64),
+		register: make(chan *epochChannel),
+		Live:     true,
 	}
 
 	allsignals := make(chan []byte)
@@ -90,6 +106,13 @@ func NewChannelConnection(conn *SignedConnection) *ChannelConnection {
 	go func() {
 		for {
 			select {
+			case register := <-channel.register:
+				if _, exists := channel.Signal[register.epoch]; exists {
+					register.response <- false
+				} else {
+					channel.Signal[register.epoch] = register.signal
+					register.response <- true
+				}
 			case epoch := <-channel.release:
 				// Release all signals
 				if epoch == 0 {
@@ -124,7 +147,6 @@ func NewChannelConnection(conn *SignedConnection) *ChannelConnection {
 		for {
 			data, err := conn.Read()
 			if err != nil {
-				slog.Info("channel connection: could not read data", "error", err)
 				channel.Live = false
 				for _, signal := range channel.Signal {
 					close(signal)
@@ -132,7 +154,7 @@ func NewChannelConnection(conn *SignedConnection) *ChannelConnection {
 				return
 			}
 			if !channel.Iddle {
-				if len(data) > 9 {
+				if len(data) >= 9 {
 					allsignals <- data
 				} else if len(data) == 1 && data[0] == 0 {
 					channel.release <- 0
@@ -154,6 +176,7 @@ func NewChannelConnection(conn *SignedConnection) *ChannelConnection {
 				if err != nil {
 					channel.Live = false
 					channel.Conn.Shutdown()
+					//close(allsignals)
 					return
 				}
 			}
@@ -234,17 +257,25 @@ func GroupGossip(epoch uint64, connections []*ChannelConnection) *Gossip {
 		Signal:  make(chan GossipMessage),
 		hashes:  make(map[crypto.Hash]struct{}),
 	}
+	mu := sync.Mutex{}
 	for _, connection := range connections {
 		go func(conn *ChannelConnection) {
+			conn.Activate()
 			signal := make(chan []byte)
 			conn.Register(epoch, signal)
+			var hasHash bool
 			for {
 				msg, ok := <-signal
 				if !ok {
 					return
 				}
 				hash := crypto.Hasher(msg)
-				if _, ok := gossip.hashes[hash]; !ok {
+				mu.Lock()
+				if _, hasHash = gossip.hashes[hash]; !hasHash {
+					gossip.hashes[hash] = struct{}{}
+				}
+				mu.Unlock()
+				if !hasHash {
 					gossip.Signal <- GossipMessage{Signal: msg, Token: conn.Conn.Token}
 				}
 			}
@@ -256,7 +287,7 @@ func GroupGossip(epoch uint64, connections []*ChannelConnection) *Gossip {
 // AssembleChannelNetwork assembles a committee of ChannelConnections. It returns
 // a channel for the slice of connections. The channel will be populated with all
 // the connections that were possible to establish.
-func AssembleChannelNetwork(peers []CommitteeMember, credentials crypto.PrivateKey, port int, hostname string, existing []*ChannelConnection) []*ChannelConnection {
+func AssembleChannelNetwork(ctx context.Context, peers []CommitteeMember, credentials crypto.PrivateKey, port int, hostname string, existing []*ChannelConnection) []*ChannelConnection {
 	peersMembers := make([]CommitteeMember, len(peers))
 	for n, peer := range peers {
 		peersMembers[n] = CommitteeMember{
@@ -264,7 +295,7 @@ func AssembleChannelNetwork(peers []CommitteeMember, credentials crypto.PrivateK
 			Token:   peer.Token,
 		}
 	}
-	committee := AssembleCommittee[*ChannelConnection](peersMembers, existing, NewChannelConnection, credentials, port, hostname)
+	committee := AssembleCommittee[*ChannelConnection](ctx, peersMembers, existing, NewChannelConnection, credentials, port, hostname)
 	members := <-committee
 	return members
 }

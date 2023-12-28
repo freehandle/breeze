@@ -19,9 +19,9 @@ const (
 )
 
 var (
-	TimeOutCommit  = 1000 * time.Millisecond
-	TimeOutVote    = 1000 * time.Millisecond
-	TimeOutPropose = 1000 * time.Millisecond
+	TimeOutCommit  = 1500 * time.Millisecond
+	TimeOutVote    = 1500 * time.Millisecond
+	TimeOutPropose = 1500 * time.Millisecond
 )
 
 type ConsensusState byte
@@ -83,19 +83,18 @@ func (p *Pooling) getRound(r byte) *Ballot {
 	return p.rounds[r]
 }
 
-func (p *Pooling) SealBlock(hash crypto.Hash) {
+func (p *Pooling) SealBlock(hash crypto.Hash, token crypto.Token) {
 	p.blockSeal = hash
-	if p.committee.Order[0].Equal(p.credentials.PublicKey()) {
-		if p.committee.Order[0].Equal(p.credentials.PublicKey()) {
-			if p.round == 0 && p.state == Proposing {
-				p.CastPropose()
-				p.state = Voting
-			}
+	if p.committee.Order[0].Equal(token) {
+		if p.round == 0 && p.state == Proposing {
+			p.CastPropose()
+			p.state = Voting
 		}
 	}
 }
 
 func (p *Pooling) NewRound(r byte) {
+	//fmt.Printf("%v\nNew Round: epoch %v round %v\n\n", p.credentials.PublicKey(), p.committee.Epoch, r)
 	p.round = r
 	p.state = Proposing
 	if p.round > byte(len(p.rounds)) {
@@ -104,7 +103,7 @@ func (p *Pooling) NewRound(r byte) {
 		}
 	}
 	leader := p.committee.Order[int(p.round)%len(p.committee.Order)]
-	if leader.Equal(p.credentials.PublicKey()) && !p.blockSeal.Equal(crypto.ZeroHash) {
+	if leader.Equal(p.credentials.PublicKey()) && !p.blockSeal.Equal(crypto.ZeroValueHash) {
 		p.CastPropose()
 		p.state = Voting
 	} else {
@@ -116,6 +115,7 @@ func (p *Pooling) NewRound(r byte) {
 
 func (p *Pooling) TimeoutPropose(r byte) {
 	if p.round == r && p.state == Proposing {
+		//fmt.Println(p.credentials.PublicKey(), "timeout propose", p.committee.Epoch, r)
 		if p.pendingVote != nil {
 			p.pendingVote.Sign(p.credentials)
 			p.CastVote(p.pendingVote.Value, p.has(p.pendingVote.Value))
@@ -128,6 +128,7 @@ func (p *Pooling) TimeoutPropose(r byte) {
 }
 
 func (p *Pooling) TimeoutVote(r byte) {
+	//fmt.Println(p.credentials.PublicKey(), "timeout vote", p.committee.Epoch, r)
 	if p.round == r && p.state == Voting {
 		p.CastBlankCommit()
 		p.state = Committing
@@ -135,6 +136,7 @@ func (p *Pooling) TimeoutVote(r byte) {
 }
 
 func (p *Pooling) TimeoutCommit(r byte) {
+	//fmt.Println(p.credentials.PublicKey(), "timeout commit", p.committee.Epoch, r)
 	if p.round == r && p.state == Committing {
 		p.NewRound(r + 1)
 	}
@@ -143,7 +145,6 @@ func (p *Pooling) TimeoutCommit(r byte) {
 func (p *Pooling) Check() {
 	round := p.rounds[p.round]
 	proposal := round.Proposal
-
 	// in any state
 
 	// terminate with 2F+1 commit to value
@@ -276,8 +277,11 @@ func (p *Pooling) CastVote(hash crypto.Hash, has bool) {
 		Weight:  p.weight(token),
 	}
 	vote.Sign(p.credentials)
+	//fmt.Printf("%v\nCast Vote: %+v\n\n", p.credentials.PublicKey(), vote)
 	p.Broadcast(vote.Serialize())
-
+	if ballot := p.getRound(p.round); ballot != nil {
+		ballot.IncoporateVote(vote)
+	}
 }
 
 func (p *Pooling) PendVote(hash crypto.Hash) {
@@ -290,6 +294,7 @@ func (p *Pooling) PendVote(hash crypto.Hash) {
 		Weight: p.weight(token),
 	}
 	p.pendingVote = vote
+	//fmt.Printf("%v\nPend Vote: %+v\n\n", p.credentials.PublicKey(), vote)
 }
 
 func (p *Pooling) CastBlankVote() {
@@ -302,7 +307,11 @@ func (p *Pooling) CastBlankVote() {
 		Weight: p.weight(token),
 	}
 	vote.Sign(p.credentials)
+	//fmt.Printf("%v\nCast Blank Vote: %+v\n\n", p.credentials.PublicKey(), vote)
 	p.Broadcast(vote.Serialize())
+	if ballot := p.getRound(p.round); ballot != nil {
+		ballot.IncoporateVote(vote)
+	}
 }
 
 func (p *Pooling) CastCommit(hash crypto.Hash) {
@@ -315,7 +324,11 @@ func (p *Pooling) CastCommit(hash crypto.Hash) {
 		Weight: p.weight(token),
 	}
 	commit.Sign(p.credentials)
+	//fmt.Printf("%v\nCast Commit: %+v\n\n", p.credentials.PublicKey(), commit)
 	p.Broadcast(commit.Serialize())
+	if ballot := p.getRound(p.round); ballot != nil {
+		ballot.IncoporateCommit(commit)
+	}
 }
 
 func (p *Pooling) CastBlankCommit() {
@@ -328,7 +341,11 @@ func (p *Pooling) CastBlankCommit() {
 		Weight: p.weight(token),
 	}
 	commit.Sign(p.credentials)
+	//fmt.Printf("%v\nCast Blank Commit: %+v\n\n", p.credentials.PublicKey(), commit)
 	p.Broadcast(commit.Serialize())
+	if ballot := p.getRound(p.round); ballot != nil {
+		ballot.IncoporateCommit(commit)
+	}
 }
 
 func (p *Pooling) CastPropose() {
@@ -349,8 +366,12 @@ func (p *Pooling) CastPropose() {
 		propose.LastRound = p.validHashRound
 	}
 	propose.Sign(p.credentials)
+	//fmt.Printf("%v\nCast Propose: %+v\n\n", p.credentials.PublicKey(), propose)
 	p.Broadcast(propose.Serialize())
-
+	if ballot := p.getRound(p.round); ballot != nil {
+		ballot.Proposal = propose
+	}
+	p.CastVote(propose.Value, p.has(propose.Value))
 }
 
 func (p *Pooling) weight(token crypto.Token) int {

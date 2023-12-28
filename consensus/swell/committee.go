@@ -1,7 +1,7 @@
 package swell
 
 import (
-	"fmt"
+	"context"
 	"sort"
 
 	"github.com/freehandle/breeze/consensus/messages"
@@ -42,6 +42,8 @@ func (h TokenHashArray) Swap(i, j int) {
 }
 
 type Committee struct {
+	ctx         context.Context
+	cancel      context.CancelFunc
 	hostname    string
 	credentials crypto.PrivateKey
 	order       []crypto.Token
@@ -66,7 +68,6 @@ func (c *Committee) Serialize() []byte {
 }
 
 func ParseCommitee(bytes []byte) ([]crypto.Token, []socket.CommitteeMember) {
-	fmt.Println("ParseCommitee", bytes)
 	if len(bytes) < 1 || bytes[0] != messages.MsgNetworkTopologyResponse {
 		return nil, nil
 	}
@@ -97,7 +98,10 @@ func ParseCommitee(bytes []byte) ([]crypto.Token, []socket.CommitteeMember) {
 }
 
 func SingleCommittee(credentials crypto.PrivateKey, hostname string) *Committee {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Committee{
+		ctx:         ctx,
+		cancel:      cancel,
 		hostname:    hostname,
 		credentials: credentials,
 		order:       []crypto.Token{credentials.PublicKey()},
@@ -119,7 +123,6 @@ func BroadcastPercolationRule(nodecount int) socket.PercolationRule {
 }
 
 func sortCandidates(candidates map[crypto.Token]int, seed []byte, committeeSize int) []crypto.Token {
-	fmt.Println("sortCandidates", len(candidates), committeeSize)
 	hashes := make(TokenHashArray, 0)
 	for token, weight := range candidates {
 		for w := 1; w <= weight; w++ {
@@ -138,8 +141,11 @@ func sortCandidates(candidates map[crypto.Token]int, seed []byte, committeeSize 
 	return ordered
 }
 
-func LaunchValidatorPool(validators Validators, credentials crypto.PrivateKey, hostname string) *Committee {
+func LaunchValidatorPool(ctx context.Context, validators Validators, credentials crypto.PrivateKey, hostname string) *Committee {
+	ctx, cancel := context.WithCancel(ctx)
 	pool := &Committee{
+		ctx:         ctx,
+		cancel:      cancel,
 		hostname:    hostname,
 		credentials: credentials,
 	}
@@ -147,8 +153,10 @@ func LaunchValidatorPool(validators Validators, credentials crypto.PrivateKey, h
 }
 
 func (v *Committee) PrepareNext(validators Validators) *Committee {
-
+	ctx, cancel := context.WithCancel(v.ctx)
 	pool := &Committee{
+		ctx:         ctx,
+		cancel:      cancel,
 		hostname:    v.hostname,
 		credentials: v.credentials,
 		order:       make([]crypto.Token, 0),
@@ -158,6 +166,7 @@ func (v *Committee) PrepareNext(validators Validators) *Committee {
 
 	token := v.credentials.PublicKey()
 	peers := make([]socket.CommitteeMember, 0)
+
 	for _, validator := range validators {
 		if weight, ok := pool.weights[validator.Token]; ok {
 			pool.weights[validator.Token] = weight + 1
@@ -177,7 +186,7 @@ func (v *Committee) PrepareNext(validators Validators) *Committee {
 		}
 		pool.order = append(pool.order, validator.Token)
 	}
-	pool.consensus = socket.AssembleChannelNetwork(peers, v.credentials, 5401, pool.hostname, v.consensus)
-	pool.blocks = socket.AssemblePercolationPool(peers, v.credentials, 5400, pool.hostname, BroadcastPercolationRule(len(peers)), v.blocks)
+	pool.consensus = socket.AssembleChannelNetwork(ctx, peers, v.credentials, 5401, pool.hostname, v.consensus)
+	pool.blocks = socket.AssemblePercolationPool(ctx, peers, v.credentials, 5400, pool.hostname, BroadcastPercolationRule(len(peers)), v.blocks)
 	return pool
 }

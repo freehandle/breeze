@@ -1,6 +1,7 @@
 package socket
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/freehandle/breeze/crypto"
@@ -73,7 +74,7 @@ func AssembleOwnPercolationPool() *PercolationPool {
 
 // AssemblePercolationPool creates a pool of connections to other nodes in the
 // peer group. It uses live connection over an existing pool if provided.
-func AssemblePercolationPool(peers []CommitteeMember, credentials crypto.PrivateKey, port int, hostname string, rule PercolationRule, existing *PercolationPool) *PercolationPool {
+func AssemblePercolationPool(ctx context.Context, peers []CommitteeMember, credentials crypto.PrivateKey, port int, hostname string, rule PercolationRule, existing *PercolationPool) *PercolationPool {
 	token := credentials.PublicKey()
 	pool := PercolationPool{
 		connections: make([]*BufferedChannel, len(peers)),
@@ -92,7 +93,7 @@ func AssemblePercolationPool(peers []CommitteeMember, credentials crypto.Private
 	if existing != nil {
 		connected = existing.connections
 	}
-	committee := AssembleCommittee[*BufferedChannel](members, connected, NewBufferredChannel, credentials, port, hostname)
+	committee := AssembleCommittee[*BufferedChannel](ctx, members, connected, NewBufferredChannel, credentials, port, hostname)
 	connections := <-committee
 	for n, member := range peers {
 		if !member.Token.Equal(token) {

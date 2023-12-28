@@ -27,6 +27,11 @@ type Signature [SignatureSize]byte
 
 var ZeroSignature Signature
 
+func (s Signature) String() string {
+	text, _ := s.MarshalText()
+	return string(text)
+}
+
 func (s Signature) MarshalText() (text []byte, err error) {
 	text = make([]byte, 2*SignatureSize)
 	hex.Encode(text, s[:])
@@ -177,6 +182,17 @@ func TokenFromString(s string) Token {
 		copy(token[:], bytes)
 	}
 	return token
+}
+
+func (t Token) Larger(another Token) bool {
+	for n := 0; n < TokenSize; n++ {
+		if t[n] > another[n] {
+			return true
+		} else if t[n] < another[n] {
+			return false
+		}
+	}
+	return false
 }
 
 func (t Token) Equal(another Token) bool {

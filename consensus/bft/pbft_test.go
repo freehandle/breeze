@@ -87,7 +87,7 @@ func TestPooling(t *testing.T) {
 			}
 			pools := LaunchPooling(p, credentials)
 			time.Sleep(10 * time.Duration(n) * time.Millisecond)
-			pools.SealBlock(hash)
+			pools.SealBlock(hash, credentials.PublicKey())
 			consensus := <-pools.Finalize
 			wg.Done()
 			if !consensus.Value.Equal(hash) {

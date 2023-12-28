@@ -105,6 +105,8 @@ func Run(ctx context.Context, config Config) (*Node, error) {
 	cloned := make(chan bool)
 	pool := make(socket.ConnectionPool)
 
+	dropConnection := make(chan crypto.Token)
+
 	adminConnections := make([]Shutdowner, 0)
 
 	// manage incoming connections and block formation
@@ -152,6 +154,8 @@ func Run(ctx context.Context, config Config) (*Node, error) {
 			case req := <-newBlockListener:
 				pool.Add(req.Conn)
 				n.SyncRequest <- req
+			case token := <-dropConnection:
+				pool.Drop(token)
 			}
 		}
 	}()
@@ -189,7 +193,7 @@ func Run(ctx context.Context, config Config) (*Node, error) {
 				if err != nil {
 					conn.Close()
 				}
-				go WaitForOutgoingSyncRequest(trustedConn, newBlockListener, action)
+				go WaitForOutgoingSyncRequest(trustedConn, newBlockListener, dropConnection, action)
 			} else {
 				slog.Warn("poa outgoing listener error", "error", err)
 				return
@@ -246,17 +250,17 @@ func WaitForProtocolActions(conn *socket.SignedConnection, terminate chan crypto
 // WaitForOutgoingSyncRequest reads a sync request from a connection and sends
 // it to the sync request channel. If it is not a valid request, if closes the
 // conection and returns without sending anything to outgoing channel.
-func WaitForOutgoingSyncRequest(conn *socket.SignedConnection, outgoing chan SyncRequest, action chan []byte) {
+func WaitForOutgoingSyncRequest(conn *socket.SignedConnection, outgoing chan SyncRequest, drop chan crypto.Token, action chan []byte) {
 	lastSync := time.Now().Add(-time.Hour)
 	for {
 		data, err := conn.Read()
 		if err != nil || len(data) < 10 || (data[0] != messages.MsgSyncRequest && data[0] != messages.MsgChecksumStatement) {
 			if err != nil {
-				slog.Info("poa WaitForOutgoingSyncRequest: connection terminated", "connection", err)
+				slog.Info("relay.WaitForOutgoingSyncRequest: connection terminated", "connection", err)
 			} else {
-				slog.Info("poa WaitForOutgoingSyncRequest: invalid sync request", "connection", conn.Token)
+				slog.Info("relay.WaitForOutgoingSyncRequest: invalid sync request", "connection", conn.Token)
 			}
-			conn.Shutdown()
+			drop <- conn.Token
 			return
 		}
 		if data[0] == messages.MsgSyncRequest {

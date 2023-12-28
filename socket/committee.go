@@ -1,6 +1,7 @@
 package socket
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -9,7 +10,7 @@ import (
 	"github.com/freehandle/breeze/crypto"
 )
 
-const CommitteeRetries = 1 // number of retries to connect to a peer before giving up
+const CommitteeRetries = 5 // number of retries to connect to a peer before giving up
 
 var CommitteeRetryDelay = time.Second // should wait for this period before retrying
 
@@ -33,31 +34,38 @@ type committeePool[T TokenComparer] struct {
 // pool assemblage will use this to check if a given token is already connected.
 type TokenComparer interface {
 	Is(crypto.Token) bool
+	Shutdown()
 }
 
 // addToPool adds a new signed connection to the connection of the pool.
 // It returns true if the connection is new and the number of remaining
 // connections to be established.
-func addToPool[T TokenComparer](conn *SignedConnection, pool *committeePool[T], NewT func(conn *SignedConnection) T) (bool, int) {
+func addToPool[T TokenComparer](conn *SignedConnection, pool *committeePool[T], NewT func(conn *SignedConnection) T, listener bool) int {
 	pool.mu.Lock()
 	defer pool.mu.Unlock()
-	isnew := true
 	for _, r := range pool.connected {
-		if r.Is(pool.token) {
-			isnew = false
+		if r.Is(conn.Token) {
+			// in case there are two connections between nodes, the connection
+			// initiated by the dialer from the node with largest token will
+			// remain and the other one will be shit down.
+			//if (conn.Token.Larger(pool.token) && listener) || (pool.token.Larger(conn.Token) && (!listener)) {
+			//	conn.Shutdown()
+			//} else {
+			//	pool.connected[n].Shutdown()
+			//	pool.connected[n] = NewT(conn)
+			//}
+			return len(pool.remaining)
 		}
 	}
-	if isnew {
-		channel := NewT(conn)
-		pool.connected = append(pool.connected, channel)
-	}
+	channel := NewT(conn)
+	pool.connected = append(pool.connected, channel)
 	for n, r := range pool.remaining {
 		if conn.Token.Equal(r.Token) {
 			pool.remaining = append(pool.remaining[:n], pool.remaining[n+1:]...)
 			break
 		}
 	}
-	return isnew, len(pool.remaining)
+	return len(pool.remaining)
 }
 
 // isMember checks if a given token is already connected to the pool.
@@ -77,7 +85,7 @@ func isMember[T TokenComparer](token crypto.Token, pool *committeePool[T]) bool 
 func newPool[T TokenComparer](peers []CommitteeMember, connected []T, token crypto.Token, NewT func(conn *SignedConnection) T) *committeePool[T] {
 	pool := &committeePool[T]{
 		mu:        &sync.Mutex{},
-		connected: connected,
+		connected: make([]T, 0),
 		remaining: make([]CommitteeMember, 0),
 		token:     token,
 	}
@@ -88,6 +96,7 @@ func newPool[T TokenComparer](peers []CommitteeMember, connected []T, token cryp
 		}
 		for _, conn := range connected {
 			if conn.Is(peer.Token) {
+				pool.connected = append(pool.connected, conn)
 				exists = true
 				break
 			}
@@ -109,9 +118,14 @@ func newPool[T TokenComparer](peers []CommitteeMember, connected []T, token cryp
 // port to listen on for new connections (other nodes will try to assemble the
 // pool at the same time). hostname is "localhost" or "" for internet connections
 // anything else for testing.
-func AssembleCommittee[T TokenComparer](peers []CommitteeMember, connected []T, NewT func(*SignedConnection) T, credentials crypto.PrivateKey, port int, hostname string) chan []T {
+func AssembleCommittee[T TokenComparer](ctx context.Context, peers []CommitteeMember, connected []T, NewT func(*SignedConnection) T, credentials crypto.PrivateKey, port int, hostname string) chan []T {
 	done := make(chan []T, 2)
 	pool := newPool(peers, connected, credentials.PublicKey(), NewT)
+	if len(pool.remaining) == 0 {
+		done <- pool.connected
+		return done
+	}
+
 	listener, err := Listen(fmt.Sprintf("%v:%v", hostname, port))
 	if err != nil {
 		slog.Warn("BuilderCommittee: could not listen on port", "port", port, "error", err)
@@ -119,26 +133,26 @@ func AssembleCommittee[T TokenComparer](peers []CommitteeMember, connected []T, 
 		return done
 	}
 
+	once := sync.Once{}
+
 	for _, peer := range pool.remaining {
-		go func(address string, token crypto.Token) {
-			for n := 0; n < CommitteeRetries; n++ {
+		if peer.Token.Larger(credentials.PublicKey()) {
+			go func(address string, token crypto.Token) {
 				time.Sleep(200 * time.Millisecond)
-				conn, err := Dial(hostname, address, credentials, token)
-				if err == nil {
-					ok, remaining := addToPool(conn, pool, NewT)
-					if !ok {
-						conn.Shutdown()
+				for n := 0; n < CommitteeRetries; n++ {
+					conn, err := Dial(hostname, address, credentials, token)
+					if err == nil {
+						remaining := addToPool(conn, pool, NewT, false)
+						if remaining == 0 {
+							once.Do(func() { done <- pool.connected })
+						}
+						return
 					}
-					if remaining == 0 {
-						listener.Close()
-					}
-					return
+					time.Sleep(500 * time.Millisecond)
 				}
-			}
-			if !isMember(token, pool) {
-				slog.Info("BuilderCommittee: could not connect to peer", "address", address, "error", err)
-			}
-		}(peer.Address, peer.Token)
+				slog.Info("BuilderCommittee: could not connect to peer", "address", address, "hostname", hostname)
+			}(peer.Address, peer.Token)
+		}
 	}
 
 	go func() {
@@ -151,10 +165,9 @@ func AssembleCommittee[T TokenComparer](peers []CommitteeMember, connected []T, 
 			if conn, err := listener.Accept(); err == nil {
 				trustedConn, err := PromoteConnection(conn, credentials, validConnections)
 				if err == nil {
-					_, remaining := addToPool(trustedConn, pool, NewT)
+					remaining := addToPool(trustedConn, pool, NewT, true)
 					if remaining == 0 {
-						listener.Close()
-						break
+						once.Do(func() { done <- pool.connected })
 					}
 				} else {
 					conn.Close()
@@ -163,7 +176,14 @@ func AssembleCommittee[T TokenComparer](peers []CommitteeMember, connected []T, 
 				break
 			}
 		}
-		done <- pool.connected
+	}()
+
+	go func() {
+		<-ctx.Done()
+		listener.Close()
+		for _, conn := range pool.connected {
+			conn.Shutdown()
+		}
 	}()
 
 	return done

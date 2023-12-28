@@ -29,6 +29,10 @@ func (b *BufferedChannel) Is(token crypto.Token) bool {
 	return b.Conn.Token.Equal(token)
 }
 
+func (b *BufferedChannel) Shutdown() {
+	b.Conn.Shutdown()
+}
+
 // Read reads data from the main channel buffer. If the buffer is empty, it
 // blocks until data is available.
 func (b *BufferedChannel) Read() []byte {
@@ -99,14 +103,14 @@ func NewBufferredChannel(conn *SignedConnection) *BufferedChannel {
 				}
 				if data[0] == 0 {
 					if waiting {
-						buffered.read <- data
+						buffered.read <- data[1:]
 						waiting = false
 					} else {
 						buffer = append(buffer, data)
 					}
 				} else {
 					if waitingside {
-						buffered.readSide <- data
+						buffered.readSide <- data[1:]
 						waitingside = false
 					} else {
 						buffer = append(bufferside, data)

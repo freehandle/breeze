@@ -1,6 +1,7 @@
 package socket
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -22,7 +23,7 @@ func TestBuildCommittee(t *testing.T) {
 	credentials := []crypto.PrivateKey{firstPK, secondPK, thirdPK}
 	channels := make([]chan []*ChannelConnection, 3)
 	for n, pk := range credentials {
-		channels[n] = AssembleCommittee(peers, nil, NewChannelConnection, pk, 3500+n, "localhost")
+		channels[n] = AssembleCommittee(context.Background(), peers, nil, NewChannelConnection, pk, 3500+n, "localhost")
 		time.Sleep(50 * time.Millisecond)
 	}
 

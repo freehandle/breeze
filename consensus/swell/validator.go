@@ -1,7 +1,6 @@
 package swell
 
 import (
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -130,11 +129,10 @@ func RunValidator(c *Window) {
 // others nodes proposals. In due time node re-arranges validator pool.
 // Uppon exclusion a node can transition to a listener node.
 func (w *Window) RunEpoch(epoch uint64) {
-	fmt.Println("bora la roda uma epoch")
 	windowStart := int(w.Start)
 	leaderCount := (int(epoch) - windowStart) % len(w.Committee.order)
 	leaderToken := w.Committee.order[leaderCount]
-	committee := &bft.PoolingCommittee{
+	poolingCommittee := &bft.PoolingCommittee{
 		Epoch:   epoch,
 		Members: make(map[crypto.Token]bft.PoolingMembers),
 		Order:   make([]crypto.Token, 0),
@@ -147,33 +145,28 @@ func (w *Window) RunEpoch(epoch uint64) {
 			slog.Warn("RunEpoch: zero weight member")
 			continue
 		}
-		if member, ok := committee.Members[token]; ok {
-			committee.Members[token] = bft.PoolingMembers{Weight: member.Weight + weight}
+		poolingCommittee.Order = append(poolingCommittee.Order, token)
+		if member, ok := poolingCommittee.Members[token]; ok {
+			poolingCommittee.Members[token] = bft.PoolingMembers{Weight: member.Weight + weight}
 		} else {
-			committee.Members[token] = bft.PoolingMembers{Weight: weight}
-		}
-		for _, v := range w.Committee.validators {
-			if v.Token.Equal(token) {
-				peers = append(peers, v)
-				break
+			poolingCommittee.Members[token] = bft.PoolingMembers{Weight: weight}
+			for _, v := range w.Committee.validators {
+				if v.Token.Equal(token) {
+					peers = append(peers, v)
+					break
+				}
 			}
 		}
 	}
-	fmt.Println("montar ChannelNetwork", peers)
-	bftConnections := socket.AssembleChannelNetwork(peers, w.Node.credentials, 5401, w.Node.hostname, w.Committee.consensus)
-	fmt.Println("montar GossipNEwtowk")
-	committee.Gossip = socket.GroupGossip(epoch, bftConnections)
-	fmt.Println("montar Pool")
-	pool := bft.LaunchPooling(*committee, w.Node.credentials)
-	leader := w.Committee.order[leaderCount]
-	fmt.Println("tudo montado")
+	bftConnections := socket.AssembleChannelNetwork(w.ctx, peers, w.Node.credentials, 5401, w.Node.hostname, w.Committee.consensus)
+	poolingCommittee.Gossip = socket.GroupGossip(epoch, bftConnections)
+
+	pool := bft.LaunchPooling(*poolingCommittee, w.Node.credentials)
 	go func() {
 		ok := false
-		if leader.Equal(w.Node.credentials.PublicKey()) {
-			fmt.Println("líder")
+		if leaderToken.Equal(w.Node.credentials.PublicKey()) {
 			ok = w.BuildBlock(epoch, pool)
 		} else {
-			fmt.Println("Partiu lá, vamos ouvir")
 			leader, others := w.Committee.blocks.GetLeader(leaderToken)
 			if leader != nil {
 				ok = w.ListenToBlock(leader, others, pool)
@@ -243,13 +236,14 @@ func (w *Window) BuildBlock(epoch uint64, pool *bft.Pooling) bool {
 				} else {
 					slog.Warn("BuildBlock: could not seal own block")
 				}
-				pool.SealBlock(hash)
+				pool.SealBlock(hash, w.Node.credentials.PublicKey())
 				return
 			}
 		}
 	}()
 	consensus := <-pool.Finalize
 	if sealed != nil && consensus.Value.Equal(sealed.Seal.Hash) {
+		sealed.Seal.Consensus = consensus.Rounds
 		w.AddSealedBlock(sealed)
 		return true
 	} else if consensus.Value.Equal(crypto.ZeroHash) {
@@ -284,7 +278,7 @@ func (w *Window) ListenToBlock(leader *socket.BufferedChannel, others []*socket.
 				block = w.Node.blockchain.CheckpointValidator(*header)
 				if block == nil {
 					slog.Info("ListenToBlock: invalid block header")
-					pool.SealBlock(crypto.ZeroHash)
+					pool.SealBlock(crypto.ZeroHash, crypto.ZeroToken)
 					return
 				}
 			case messages.MsgSeal:
@@ -299,7 +293,7 @@ func (w *Window) ListenToBlock(leader *socket.BufferedChannel, others []*socket.
 					return
 				}
 				sealed = block.ImprintSeal(*seal)
-				pool.SealBlock(seal.Hash)
+				pool.SealBlock(seal.Hash, block.Header.Proposer)
 				return
 			case messages.MsgAction:
 				if block != nil {
@@ -311,6 +305,7 @@ func (w *Window) ListenToBlock(leader *socket.BufferedChannel, others []*socket.
 		}
 	}()
 	consensus := <-pool.Finalize
+
 	if !consensus.Value.Equal(sealed.Seal.Hash) {
 		nodesWithData := make(map[crypto.Token]struct{})
 		for _, round := range consensus.Rounds {
@@ -335,7 +330,7 @@ func (w *Window) ListenToBlock(leader *socket.BufferedChannel, others []*socket.
 		slog.Warn("ListenToBlock: could not retrieve sealed block from consensus")
 		return false
 	}
-	w.Node.blockchain.AddSealedBlock(sealed)
-	slog.Info("ListenToBlock: sealed block retrieved from consensus", "epoch", sealed.Header.Epoch, "hash", crypto.EncodeHash(sealed.Seal.Hash))
+	sealed.Seal.Consensus = consensus.Rounds
+	w.AddSealedBlock(sealed)
 	return true
 }

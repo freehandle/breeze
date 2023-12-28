@@ -8,6 +8,10 @@ import (
 
 type Hash [Size]byte
 
+func (h Hash) String() string {
+	return EncodeHash(h)
+}
+
 var hashLength = base64.StdEncoding.EncodedLen(Size)
 
 func (h Hash) MarshalText() (text []byte, err error) {
