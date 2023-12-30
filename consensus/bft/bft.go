@@ -22,6 +22,7 @@ func LaunchPooling(committee PoolingCommittee, credentials crypto.PrivateKey) *P
 		shutdown:    make(chan struct{}),
 	}
 	messages := committee.Gossip.Messages()
+	token := credentials.PublicKey()
 	go func() {
 		pooling.NewRound(0)
 		for {
@@ -35,7 +36,7 @@ func LaunchPooling(committee PoolingCommittee, credentials crypto.PrivateKey) *P
 				switch msg.Signal[0] {
 				case RoundProposeMsg:
 					propose := ParseRoundPropose(msg.Signal)
-					if propose == nil {
+					if propose == nil || propose.Token.Equal(token) {
 						continue
 					}
 					committee.Gossip.BroadcastExcept(msg.Signal, msg.Token)
@@ -50,7 +51,7 @@ func LaunchPooling(committee PoolingCommittee, credentials crypto.PrivateKey) *P
 					}
 				case RoundVoteMsg:
 					vote := ParseRoundVote(msg.Signal)
-					if vote == nil {
+					if vote == nil || vote.Token.Equal(token) {
 						continue
 					}
 					//fmt.Printf("%v got vote from %v\n\n", credentials.PublicKey(), vote.Token)
@@ -67,7 +68,7 @@ func LaunchPooling(committee PoolingCommittee, credentials crypto.PrivateKey) *P
 					}
 				case RoundCommitMsg:
 					commit := ParseRoundCommit(msg.Signal)
-					if commit == nil {
+					if commit == nil || commit.Token.Equal(token) {
 						continue
 					}
 					if w, ok := committee.Members[commit.Token]; ok {

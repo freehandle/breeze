@@ -15,7 +15,7 @@ import (
 // from other nodes in the sequence given by the order parameter. It returns a
 // channel to a selaed block.
 // TODO: it does nothing when the block is not found.
-func RetrieveBlock(epoch uint64, hash crypto.Hash, order []*socket.BufferedChannel) chan *chain.SealedBlock {
+func RetrieveBlock(epoch uint64, hash crypto.Hash, order []*socket.BufferedMultiChannel) chan *chain.SealedBlock {
 	output := make(chan *chain.SealedBlock)
 	ellapse := 400 * time.Millisecond
 	msg := messages.RequestBlockMessage(epoch, hash)
@@ -24,7 +24,7 @@ func RetrieveBlock(epoch uint64, hash crypto.Hash, order []*socket.BufferedChann
 		output: output,
 	}
 	for n, channel := range order {
-		go func(n int, channel *socket.BufferedChannel, status *retrievalStatus) {
+		go func(n int, channel *socket.BufferedMultiChannel, status *retrievalStatus) {
 			time.Sleep(time.Duration(n) * ellapse)
 			if status.done {
 				return

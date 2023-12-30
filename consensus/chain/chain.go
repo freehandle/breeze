@@ -377,6 +377,12 @@ func (c *Blockchain) CommitBlock(blockEpoch uint64) bool {
 	if c.IsChecksumCommit() {
 		c.MarkCheckpoint()
 	}
+	slog.Info("Blockchain: committed block", "epoch", block.Header.Epoch, "hash", crypto.EncodeHash(block.Seal.Hash), "publisher", block.Header.Proposer)
+	if blockEpoch%uint64(c.ChecksumWindow) == 0 {
+		c.Checksum = c.NextChecksum
+		c.NextChecksum = nil
+		slog.Info("Breeze: checksum window completed", "epoch", block.Header.Epoch, "last block hash", crypto.EncodeHash(block.Seal.Hash))
+	}
 	return true
 }
 

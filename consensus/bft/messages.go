@@ -99,11 +99,11 @@ func ParseRoundPropose(bytes []byte) *RoundPropose {
 }
 
 func (r *RoundPropose) MsgKind() byte {
-	return 0
+	return RoundProposeMsg
 }
 
 func (r *RoundPropose) serializeToSign() []byte {
-	bytes := []byte{0}
+	bytes := []byte{RoundProposeMsg}
 	util.PutUint64(r.Epoch, &bytes)
 	util.PutByte(r.Round, &bytes)
 	util.PutToken(r.Token, &bytes)

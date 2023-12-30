@@ -2,6 +2,7 @@ package swell
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/freehandle/breeze/consensus/chain"
@@ -61,7 +62,7 @@ func (w *Window) incorporateStatement(statement *chain.ChecksumStatement, epoch 
 func (w *Window) StartNewBlock(epoch uint64) *chain.BlockBuilder {
 	header := w.Node.blockchain.NextBlock(epoch)
 	if header == nil {
-		slog.Warn("StartNewBlock: could not form new Header", "epoch", epoch)
+		slog.Warn("Blockchain: breeze StartNewBlock could not form new Header", "epoch", epoch)
 		return nil
 	}
 	header.Candidate = []*chain.ChecksumStatement{}
@@ -91,6 +92,9 @@ func (w *Window) PrepareNewWindow() {
 	consenusHash, ok := getConsensusHash(w.published, w.Committee.weights)
 	if !ok {
 		slog.Warn("PrepareNewWindow: could not find consensus hash", "start", next.Start)
+		for _, p := range w.published {
+			fmt.Println(p)
+		}
 		// TODO: how to handle this?
 		return
 	}
@@ -105,6 +109,13 @@ func (w *Window) PrepareNewWindow() {
 	permissioned := w.Node.config.Permission.DeterminePool(w.Node.blockchain, preCandidates)
 	// candidates = permissioned sorted by swell committee rule
 	candidates := sortCandidates(permissioned, consenusHash[:], w.Node.config.MaxCommitteeSize)
+
+	aproved := make(map[crypto.Token]int)
+	for _, token := range candidates {
+		aproved[token] += 1
+	}
+
+	slog.Info("Breeze: next window validator pool defined", "window start", next.Start, "validators", aproved)
 
 	// test if node is amond selected candidates
 	amIIn := false
@@ -130,13 +141,13 @@ func (w *Window) PrepareNewWindow() {
 	// launch committee
 	go func() {
 		if !amIIn {
-			slog.Info("PrepareNewWindow: node not included in the committee", "start", next.Start)
+			slog.Info("Swell: PrepareNewWindow node not included in the committee", "start", next.Start)
 			conn := ConnectRandomValidator(w.Node.hostname, w.Node.credentials, validators)
 			if conn == nil {
-				slog.Info("PrepareNewWindow: node not connect to any member of the committee. Shutting down.")
+				slog.Info("Swell: PrepareNewWindow node not connect to any member of the committee. Shutting down.")
 				return
 			}
-			slog.Info("PrepareNewWindow: starting non validator node connected to", "node", conn.Token, "start", next.Start)
+			slog.Info("Swell: PrepareNewWindow starting non validator node connected to", "node", conn.Token, "start", next.Start)
 			RunNonValidatorNode(next, conn, true)
 			return
 		}
@@ -146,10 +157,10 @@ func (w *Window) PrepareNewWindow() {
 			next.Committee = LaunchValidatorPool(w.ctx, validators, w.Node.credentials, w.Node.hostname)
 		}
 		if next.Committee == nil {
-			slog.Warn("PrepareNewWindow: could not launch validator pool", "start", next.Start)
+			slog.Warn("Swell: PrepareNewWindow could not launch validator pool", "start", next.Start)
 			return
 		}
-		slog.Info("PrepareNewWindow: validator pool launched", "start", next.Start)
+		slog.Info("Swell: PrepareNewWindow validator pool launched", "start", next.Start)
 		w.nextCommittee = next.Committee
 		RunValidator(next)
 	}()
@@ -169,7 +180,7 @@ func (w *Window) AddSealedBlock(sealed *chain.SealedBlock) {
 
 func (w *Window) CanPrepareNextWindow() bool {
 	epoch := w.Node.blockchain.LastCommitEpoch
-	return epoch > w.Start+(w.End-w.Start)*9/10
+	return epoch >= w.Start+(w.End-w.Start)*9/10
 }
 
 func (w *Window) DressedChecksumStatement(epoch uint64) *chain.ChecksumStatement {

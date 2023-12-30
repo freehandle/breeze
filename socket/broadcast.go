@@ -40,11 +40,11 @@ func MergeRules(r ...PercolationRule) PercolationRule {
 // the peer group and a percolation rule that orients how any messgae is
 // transmitted between nodes until every node is reached.
 type PercolationPool struct {
-	connections []*BufferedChannel
+	connections []*BufferedMultiChannel
 	rule        PercolationRule
 }
 
-func (p *PercolationPool) GetLeader(token crypto.Token) (*BufferedChannel, []*BufferedChannel) {
+func (p *PercolationPool) GetLeader(token crypto.Token) (*BufferedMultiChannel, []*BufferedMultiChannel) {
 	for n, connection := range p.connections {
 		if connection.Conn.Token.Equal(token) {
 			return connection, append(p.connections[:n], p.connections[n+1:]...)
@@ -58,7 +58,7 @@ func (b *PercolationPool) Send(epoch uint64, data []byte) {
 	nodes := b.rule(epoch)
 	for _, node := range nodes {
 		if b.connections[node] != nil {
-			b.connections[node].Send(data)
+			b.connections[node].Send(epoch, data)
 		}
 	}
 }
@@ -67,7 +67,7 @@ func (b *PercolationPool) Send(epoch uint64, data []byte) {
 // for the case where the network is composed of a single node.
 func AssembleOwnPercolationPool() *PercolationPool {
 	return &PercolationPool{
-		connections: make([]*BufferedChannel, 0),
+		connections: make([]*BufferedMultiChannel, 0),
 		rule:        func(epoch uint64) []int { return []int{} },
 	}
 }
@@ -77,7 +77,7 @@ func AssembleOwnPercolationPool() *PercolationPool {
 func AssemblePercolationPool(ctx context.Context, peers []CommitteeMember, credentials crypto.PrivateKey, port int, hostname string, rule PercolationRule, existing *PercolationPool) *PercolationPool {
 	token := credentials.PublicKey()
 	pool := PercolationPool{
-		connections: make([]*BufferedChannel, len(peers)),
+		connections: make([]*BufferedMultiChannel, len(peers)),
 		rule:        rule,
 	}
 	members := make([]CommitteeMember, 0)
@@ -89,11 +89,11 @@ func AssemblePercolationPool(ctx context.Context, peers []CommitteeMember, crede
 			})
 		}
 	}
-	connected := make([]*BufferedChannel, 0)
+	connected := make([]*BufferedMultiChannel, 0)
 	if existing != nil {
 		connected = existing.connections
 	}
-	committee := AssembleCommittee[*BufferedChannel](ctx, members, connected, NewBufferredChannel, credentials, port, hostname)
+	committee := AssembleCommittee[*BufferedMultiChannel](ctx, members, connected, NewBufferredMultiChannel, credentials, port, hostname)
 	connections := <-committee
 	for n, member := range peers {
 		if !member.Token.Equal(token) {

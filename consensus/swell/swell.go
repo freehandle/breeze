@@ -154,6 +154,11 @@ func (s *SwellNode) TimeStampBlock(epoch uint64) time.Time {
 
 func (s *SwellNode) Timer(epoch uint64) *time.Timer {
 	delta := time.Until(s.blockchain.TimestampBlock(epoch))
+	// minimum timer is set as 100 miliseconds... in order to prevent
+	// the node from being too busy doing many things ate once.
+	if delta < 100*time.Millisecond {
+		delta = 100 * time.Millisecond
+	}
 	return time.NewTimer(delta)
 }
 

@@ -1,6 +1,7 @@
 package bft
 
 import (
+	"log/slog"
 	"time"
 
 	"github.com/freehandle/breeze/crypto"
@@ -69,6 +70,10 @@ type Pooling struct {
 	shutdown       chan struct{}
 }
 
+func (p *Pooling) Epoch() uint64 {
+	return p.committee.Epoch
+}
+
 func (p *Pooling) isLeader(token crypto.Token, round byte) bool {
 	return p.committee.Order[int(round)%len(p.committee.Order)].Equal(token)
 }
@@ -84,8 +89,12 @@ func (p *Pooling) getRound(r byte) *Ballot {
 }
 
 func (p *Pooling) SealBlock(hash crypto.Hash, token crypto.Token) {
+	if !p.committee.Order[0].Equal(token) {
+		slog.Info("Swell: SealBlock from a non-leader", "token", token, "epoch", p.committee.Epoch, "round", p.round)
+		return
+	}
 	p.blockSeal = hash
-	if p.committee.Order[0].Equal(token) {
+	if p.credentials.PublicKey().Equal(token) {
 		if p.round == 0 && p.state == Proposing {
 			p.CastPropose()
 			p.state = Voting

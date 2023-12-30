@@ -1,6 +1,8 @@
 package bft
 
 import (
+	"log/slog"
+
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/util"
 )
@@ -18,20 +20,31 @@ func PutBallot(b *Ballot, data *[]byte) {
 }
 
 func (b *Ballot) Serialize() []byte {
-	bytes := util.Uint64ToBytes(uint64(b.TotalWeight))
+	bytes := make([]byte, 0)
 	util.PutUint64(uint64(b.TotalWeight), &bytes)
-	if b.Proposal != nil {
+	util.PutByte(b.Round, &bytes)
+	if b.Proposal == nil {
 		util.PutByteArray([]byte{}, &bytes)
 	} else {
 		util.PutByteArray(b.Proposal.Serialize(), &bytes)
 	}
 	util.PutUint16(uint16(len(b.Votes)), &bytes)
 	for _, vote := range b.Votes {
-		util.PutByteArray(vote.Serialize(), &bytes)
+		if vote == nil {
+			slog.Warn("ballot serializer: nil vote pointer found")
+			util.PutByteArray([]byte{}, &bytes)
+		} else {
+			util.PutByteArray(vote.Serialize(), &bytes)
+		}
 	}
-	util.PutUint16(uint16(len(b.Votes)), &bytes)
+	util.PutUint16(uint16(len(b.Commits)), &bytes)
 	for _, commit := range b.Commits {
-		util.PutByteArray(commit.Serialize(), &bytes)
+		if commit == nil {
+			slog.Warn("ballot serializer: nil commit pointer found")
+			util.PutByteArray([]byte{}, &bytes)
+		} else {
+			util.PutByteArray(commit.Serialize(), &bytes)
+		}
 	}
 	return bytes
 }
@@ -49,7 +62,7 @@ func ParseBallotPosition(data []byte, position int) (*Ballot, int) {
 	}
 	var totalweight uint64
 	if totalweight, position = util.ParseUint64(data, position); totalweight == 0 {
-		return nil, len(data) + 1
+		slog.Info("ballot parser: zero weight found")
 	}
 	ballot.TotalWeight = int(totalweight)
 	ballot.Round, position = util.ParseByte(data, position)
@@ -64,8 +77,11 @@ func ParseBallotPosition(data []byte, position int) (*Ballot, int) {
 		if vote := ParseRoundVote(bytes); vote != nil {
 			ballot.Votes = append(ballot.Votes, vote)
 		} else {
-			return nil, len(data) + 1
+			slog.Info("ballot parser: nil vote found")
 		}
+	}
+	if position >= len(data) {
+		return nil, len(data) + 1
 	}
 	count, position = util.ParseUint16(data, position)
 	for i := uint16(0); i < count; i++ {
@@ -73,8 +89,11 @@ func ParseBallotPosition(data []byte, position int) (*Ballot, int) {
 		if commit := ParseRoundCommit(bytes); commit != nil {
 			ballot.Commits = append(ballot.Commits, commit)
 		} else {
-			return nil, len(data) + 1
+			slog.Info("ballot parser: nil commit found")
 		}
+	}
+	if position > len(data) {
+		return nil, len(data) + 1
 	}
 	return &ballot, position
 }

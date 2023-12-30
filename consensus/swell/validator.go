@@ -1,6 +1,7 @@
 package swell
 
 import (
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -23,12 +24,13 @@ import (
 func RunValidator(c *Window) {
 	epoch := c.Start
 	startEpoch := c.Node.Timer(epoch)
-	slog.Info("RunValidator: starting new window", "starting at", epoch)
+	slog.Debug("RunValidator: starting new window", "starting at", epoch)
 	// to receive confirmations from the goroutines responsi
 	c.newBlock = make(chan BlockConsensusConfirmation)
 	//checksumEpoch := (c.Start + c.End) / 2
 	//hasCheckpoint := make(chan bool)
 	//requestedChecksum := false
+	terminated := false
 
 	go func() {
 		done := c.ctx.Done()
@@ -36,19 +38,28 @@ func RunValidator(c *Window) {
 			select {
 			case <-startEpoch.C:
 				if epoch > c.End {
-					return
-				}
-				c.Node.actions.Epoch <- epoch
-				if c.IsPoolMember(epoch) {
-					if len(c.Committee.weights) == 1 {
-						c.BuildSoloBLock(epoch)
-					} else {
-						c.RunEpoch(epoch)
+					if terminated {
+						slog.Info("Swell: checksum window ended successfully", "starting at", c.Start, "ending at", c.End)
+						return
+					}
+					// fake block consensus confirmation to wait until all blocks are
+					// commit to terminate the windows jow
+					c.newBlock <- BlockConsensusConfirmation{Epoch: epoch, Status: true}
+
+				} else {
+					c.Node.actions.Epoch <- epoch
+					if c.IsPoolMember(epoch) {
+						if len(c.Committee.weights) == 1 {
+							c.BuildSoloBLock(epoch)
+						} else {
+							c.RunEpoch(epoch)
+						}
 					}
 				}
 				epoch += 1
 				startEpoch = c.Node.blockchain.Timer(epoch)
 			case <-done:
+				slog.Debug("RunValidator: context done, ending timer", "ending at", epoch)
 				startEpoch.Stop()
 				return
 			}
@@ -56,6 +67,9 @@ func RunValidator(c *Window) {
 	}()
 
 	go func() {
+		defer func() {
+			close(c.newBlock)
+		}()
 		sealedblocks := make(map[uint64]crypto.Hash, 0)
 		commitblocks := make(map[uint64]crypto.Hash, 0)
 		cancel := c.ctx.Done()
@@ -105,6 +119,13 @@ func RunValidator(c *Window) {
 								msg := messages.Commit(commit.Header.Epoch, commit.Seal.Hash, commit.Commit.Serialize())
 								commitblocks[commit.Header.Epoch] = commit.Seal.Hash
 								c.Node.relay.BlockEvents <- msg
+								// terminate job if we reached the end of the window
+								// this pressuposes time ordering of recent blocks in
+								// blockchain struct.
+								if commit.Header.Epoch == c.End {
+									terminated = true
+									return
+								}
 							} else if !hash.Equal(commit.Seal.Hash) {
 								slog.Error("SwellNode.RunValidatingNode: ambigous commit block", "expected hash", crypto.EncodeHash(hash), "got hash", crypto.EncodeHash(commit.Seal.Hash))
 							}
@@ -118,7 +139,7 @@ func RunValidator(c *Window) {
 					slog.Warn("validator consensus failed for epoch", "epoch", consensus.Epoch)
 				}
 			case <-cancel:
-				close(c.newBlock)
+				slog.Debug("RunValidator: context done, ending block dealer", "ending at", epoch)
 				return
 			}
 		}
@@ -129,8 +150,7 @@ func RunValidator(c *Window) {
 // others nodes proposals. In due time node re-arranges validator pool.
 // Uppon exclusion a node can transition to a listener node.
 func (w *Window) RunEpoch(epoch uint64) {
-	windowStart := int(w.Start)
-	leaderCount := (int(epoch) - windowStart) % len(w.Committee.order)
+	leaderCount := int(epoch-w.Start) % len(w.Committee.order)
 	leaderToken := w.Committee.order[leaderCount]
 	poolingCommittee := &bft.PoolingCommittee{
 		Epoch:   epoch,
@@ -247,9 +267,11 @@ func (w *Window) BuildBlock(epoch uint64, pool *bft.Pooling) bool {
 		w.AddSealedBlock(sealed)
 		return true
 	} else if consensus.Value.Equal(crypto.ZeroHash) {
+		fmt.Println("deu ruim")
 		return false
 	}
-	return true
+	fmt.Println("deu ruim 2")
+	return false
 }
 
 // ListenToBlock listens to the block events from the gossip network and upon
@@ -258,12 +280,14 @@ func (w *Window) BuildBlock(epoch uint64, pool *bft.Pooling) bool {
 // a sealed block to the node. In case the swell node is not in posession of a
 // block with the consensus hash it tries to get that block from other nodes
 // of the gossip network.
-func (w *Window) ListenToBlock(leader *socket.BufferedChannel, others []*socket.BufferedChannel, pool *bft.Pooling) bool {
+func (w *Window) ListenToBlock(leader *socket.BufferedMultiChannel, others []*socket.BufferedMultiChannel, pool *bft.Pooling) bool {
+	defer leader.Release(pool.Epoch())
 	var sealed *chain.SealedBlock
+	epoch := pool.Epoch()
 	go func() {
 		var block *chain.BlockBuilder
 		for {
-			data := leader.Read()
+			data := leader.Read(epoch)
 			if len(data) == 0 {
 				continue
 			}
@@ -274,7 +298,6 @@ func (w *Window) ListenToBlock(leader *socket.BufferedChannel, others []*socket.
 					slog.Info("ListenToBlock: invalid block header")
 					return
 				}
-
 				block = w.Node.blockchain.CheckpointValidator(*header)
 				if block == nil {
 					slog.Info("ListenToBlock: invalid block header")
@@ -283,13 +306,17 @@ func (w *Window) ListenToBlock(leader *socket.BufferedChannel, others []*socket.
 				}
 			case messages.MsgSeal:
 				epoch, position := util.ParseUint64(data, 1)
-				if block == nil || epoch != block.Header.Epoch {
-					slog.Info("ListenToBlock: invalid ep1och on seal")
-					return
-				}
 				seal := chain.ParseBlockSeal(data[position:])
 				if seal == nil {
-					slog.Info("ListenToBlock: invalid seal")
+					slog.Info("ListenToBlock: invalid seal", "epoch", epoch)
+					return
+				}
+				if block == nil {
+					slog.Info("ListenToBlock: received seal without block header", "epoch", epoch, "seal", crypto.EncodeHash(seal.Hash))
+					return
+				}
+				if epoch != block.Header.Epoch {
+					slog.Info("ListenToBlock: received seal incompatible with block header epoch")
 					return
 				}
 				sealed = block.ImprintSeal(*seal)
@@ -306,7 +333,12 @@ func (w *Window) ListenToBlock(leader *socket.BufferedChannel, others []*socket.
 	}()
 	consensus := <-pool.Finalize
 
-	if !consensus.Value.Equal(sealed.Seal.Hash) {
+	if consensus == nil {
+		slog.Error("ListenToBlock: nil consensus received from channel")
+		return false
+	}
+
+	if sealed == nil || (!consensus.Value.Equal(sealed.Seal.Hash)) {
 		nodesWithData := make(map[crypto.Token]struct{})
 		for _, round := range consensus.Rounds {
 			for _, vote := range round.Votes {
@@ -315,7 +347,7 @@ func (w *Window) ListenToBlock(leader *socket.BufferedChannel, others []*socket.
 				}
 			}
 		}
-		order := make([]*socket.BufferedChannel, 0)
+		order := make([]*socket.BufferedMultiChannel, 0)
 		for token := range nodesWithData {
 			for _, others := range others {
 				if others.Is(token) {
@@ -324,10 +356,10 @@ func (w *Window) ListenToBlock(leader *socket.BufferedChannel, others []*socket.
 				}
 			}
 		}
-		sealed = <-RetrieveBlock(sealed.Header.Epoch, consensus.Value, order)
+		sealed = <-RetrieveBlock(pool.Epoch(), consensus.Value, order)
 	}
 	if sealed == nil {
-		slog.Warn("ListenToBlock: could not retrieve sealed block from consensus")
+		slog.Warn("Breeze: ListentToBlock could not retrieve sealed block compatible consensus")
 		return false
 	}
 	sealed.Seal.Consensus = consensus.Rounds

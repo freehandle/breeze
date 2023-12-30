@@ -82,7 +82,7 @@ func TestSwell() {
 			log.Fatal(err)
 			return
 		}
-		for n := 1; n < 3000; n++ {
+		for n := 1; n < 30000; n++ {
 			time.Sleep(30 * time.Millisecond)
 			token, _ := crypto.RandomAsymetricKey()
 			transfer := actions.Transfer{

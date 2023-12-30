@@ -105,7 +105,6 @@ func ParseDuplicatePosition(data []byte, position int) (*Duplicate, int) {
 		if onePropose == nil || twoPropose == nil {
 			return nil, len(data)
 		}
-
 		duplicate.AddProposal(onePropose, twoPropose)
 	}
 	return duplicate, position

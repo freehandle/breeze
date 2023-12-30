@@ -256,9 +256,9 @@ func WaitForOutgoingSyncRequest(conn *socket.SignedConnection, outgoing chan Syn
 		data, err := conn.Read()
 		if err != nil || len(data) < 10 || (data[0] != messages.MsgSyncRequest && data[0] != messages.MsgChecksumStatement) {
 			if err != nil {
-				slog.Info("relay.WaitForOutgoingSyncRequest: connection terminated", "connection", err)
+				slog.Info("relay node synchronization connection terminated", "node", conn.Token)
 			} else {
-				slog.Info("relay.WaitForOutgoingSyncRequest: invalid sync request", "connection", conn.Token)
+				slog.Info("relay node synchronization: invalid sync request message", "node", conn.Token, "message code", data[0], "message length", len(data))
 			}
 			drop <- conn.Token
 			return
