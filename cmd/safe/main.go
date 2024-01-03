@@ -5,7 +5,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/freehandle/breeze/util"
 	"golang.org/x/term"
 )
 
@@ -20,6 +19,11 @@ The commands are:
 	remove    remove trusted node from breeze network
 	nodes     list all trusted nodes on breeze network
 	generate  generate new random key pair and secure them on vault
+	sync      sync required keys with trusted node
+	grant	  grant token with access to connect as a gateway or block listener
+	revoke    revoke token access to connect as a gateway or block listener
+	activity  instructs trusted node whether to candidate to become a validator. 
+	status    show status of a trusted node 
 	
 Use "safe help <command>" for more information about a command.
 
@@ -32,21 +36,12 @@ const (
 	removeCmd
 	nodesCmd
 	generateCmd
+	syncCmd
+	grantCmd
+	revokeCmd
+	activityCmd
+	statusCmd
 )
-
-func ParseCommand(params ...string) {
-	if len(params) == 0 {
-		return
-	}
-	if params[0] == "help" {
-		if len(params) > 1 {
-			if params[1] == "new" {
-				fmt.Print(helpNew)
-				os.Exit(0)
-			}
-		}
-	}
-}
 
 func readPassword(phrase string) []byte {
 	fmt.Println(phrase)
@@ -92,20 +87,36 @@ func parseCommand() byte {
 		return nodesCmd
 	case "generate":
 		return generateCmd
+	case "sync":
+		return syncCmd
+	case "grant":
+		return grantCmd
+	case "revoke":
+		return revokeCmd
+	case "activity":
+		return activityCmd
+	case "status":
+		return statusCmd
 	default:
 		return noCmd
 	}
 }
 
-func register()
-
 func main() {
-	ParseCommand(os.Args[1:]...)
 	if len(os.Args) < 2 {
 		fmt.Println(usage)
 		return
 	}
-	var safe *util.SecureVault
+	if strings.ToLower(os.Args[1]) == "help" {
+		if len(os.Args) < 3 {
+			fmt.Println(usage)
+		} else {
+			help(os.Args[2])
+		}
+		return
+	}
+
+	var safe *Safe
 	cmd := parseCommand()
 	if stat, _ := os.Stat(os.Args[1]); stat == nil {
 		if cmd == createCmd || yesorno("File does not exist. Create new [yes/no]?") {
@@ -122,14 +133,25 @@ func main() {
 			return
 		}
 		password := readPassword("Enter pass phrase to open vault:")
-		safe = util.OpenVaultFromPassword([]byte(password), os.Args[1])
+		var err error
+		safe, err = OpenVaultFromPassword([]byte(password), os.Args[1])
 		if safe == nil {
-			fmt.Println("Could not open vault")
+			fmt.Printf("Could not open vault: %v\n", err)
 			return
 		}
 	}
 	if cmd == noCmd {
 		fmt.Println("done")
+		return
+	}
+	execution := parseCommandArgs(cmd, os.Args[3:])
+	if execution == nil {
+		fmt.Println("Invalid command")
+		return
+	}
+	err := execution.Execute(safe)
+	if err != nil {
+		fmt.Printf("Error executing command: %v\n", err)
 		return
 	}
 }

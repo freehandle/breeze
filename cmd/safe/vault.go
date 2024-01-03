@@ -1,13 +1,10 @@
 package main
 
 import (
-	"crypto/rand"
-	"io"
+	"errors"
 	"log"
-	"os"
 
 	"github.com/freehandle/breeze/crypto"
-	"github.com/freehandle/breeze/crypto/scrypt"
 	"github.com/freehandle/breeze/util"
 )
 
@@ -17,14 +14,33 @@ const (
 )
 
 type RegisteredNode struct {
+	ID          string
 	Host        string
 	Token       crypto.Token
 	Description string
 	Live        bool
 }
 
+func ParseRegisteredNode(data []byte) *RegisteredNode {
+	if len(data) == 0 || data[0] != RegisteredNodeKind {
+		return nil
+	}
+	position := 1
+	node := RegisteredNode{}
+	node.ID, position = util.ParseString(data, position)
+	node.Host, position = util.ParseString(data, position)
+	node.Token, position = util.ParseToken(data, position)
+	node.Description, position = util.ParseString(data, position)
+	node.Live, position = util.ParseBool(data, position)
+	if position != len(data) {
+		return nil
+	}
+	return &node
+}
+
 func (r RegisteredNode) Serialize() []byte {
 	data := []byte{RegisteredNodeKind}
+	util.PutString(r.ID, &data)
 	util.PutString(r.Host, &data)
 	util.PutToken(r.Token, &data)
 	util.PutString(r.Description, &data)
@@ -38,6 +54,21 @@ type WalletKey struct {
 	ID          string
 }
 
+func ParseWalletKey(data []byte) *WalletKey {
+	if len(data) == 0 || data[0] != WalletKeyKind {
+		return nil
+	}
+	position := 1
+	wallet := WalletKey{}
+	wallet.Secret, position = util.ParseSecret(data, position)
+	wallet.Description, position = util.ParseString(data, position)
+	wallet.ID, position = util.ParseString(data, position)
+	if position != len(data) {
+		return nil
+	}
+	return &wallet
+}
+
 func (w WalletKey) Serialize() []byte {
 	data := []byte{WalletKeyKind}
 	util.PutSecret(w.Secret, &data)
@@ -46,32 +77,21 @@ func (w WalletKey) Serialize() []byte {
 	return data
 }
 
-type SecureVault struct {
-	SecretKey  crypto.PrivateKey
+type Safe struct {
 	Nodes      []RegisteredNode
 	WalletKeys []WalletKey
-	file       io.WriteCloser
-	cipher     crypto.Cipher
+	vault      *util.SecureVault
 }
 
-func (s *SecureVault) Close() {
-	s.file.Close()
+func (s *Safe) Close() {
+	s.vault.Close()
 }
 
-func (vault *SecureVault) SecureItem(data []byte) {
-	if len(data) < 1 {
-		log.Fatal("Invalid data to vault")
-		os.Exit(1)
-	}
-	sealed := vault.cipher.Seal(data[1:])
-	size := len(sealed) + 1
-	data = append([]byte{byte(size), byte(size >> 8), data[0]}, sealed...)
-	if n, err := vault.file.Write(data); n != len(data) || err != nil {
-		log.Fatalf("secret vault is possibly compromissed: %v\n", err)
-	}
+func (safe *Safe) SecureItem(data []byte) error {
+	return safe.vault.NewEntry(data)
 }
 
-func (vault *SecureVault) GenerateNewKey(id, description string) (crypto.Token, crypto.PrivateKey) {
+func (vault *Safe) GenerateNewKey(id, description string) (crypto.Token, crypto.PrivateKey) {
 	for _, wallet := range vault.WalletKeys {
 		if wallet.ID == id {
 			log.Fatal("Wallet ID already exists")
@@ -88,17 +108,18 @@ func (vault *SecureVault) GenerateNewKey(id, description string) (crypto.Token, 
 	return token, newKey
 }
 
-func (vault *SecureVault) RegisteredNode(host, description string, token crypto.Token) {
+func (vault *Safe) RegisteredNode(id, host, description string, token crypto.Token) error {
 	exists := false
 	for _, node := range vault.Nodes {
-		if node.Host == host {
+		if node.ID == id {
 			exists = node.Live
 		}
 	}
 	if exists {
-		log.Fatal("Node already exists. remove it first")
+		return errors.New("Node already exists. remove it first")
 	}
 	node := RegisteredNode{
+		ID:          id,
 		Host:        host,
 		Token:       token,
 		Description: description,
@@ -106,54 +127,70 @@ func (vault *SecureVault) RegisteredNode(host, description string, token crypto.
 	}
 	vault.SecureItem(node.Serialize())
 	vault.Nodes = append(vault.Nodes, node)
+	return nil
 }
 
-func (vault *SecureVault) RemoveNode(host, description string, token crypto.Token) {
+func (vault *Safe) RemoveNode(id string) error {
 	exists := false
 	for _, node := range vault.Nodes {
-		if node.Host == host {
+		if node.ID == id {
 			exists = node.Live
 		}
 	}
-	if exists {
-		log.Fatal("Node already exists. remove it first")
+	if !exists {
+		return errors.New("No registered node found.")
 	}
 	node := RegisteredNode{
-		Host:        host,
-		Token:       token,
-		Description: description,
-		Live:        true,
+		ID:   id,
+		Live: false,
 	}
 	vault.SecureItem(node.Serialize())
 	vault.Nodes = append(vault.Nodes, node)
+	return nil
 }
 
-func NewSecureVault(password []byte, fileName string) *SecureVault {
-	file, err := os.Create(fileName)
+func NewSecureVault(password []byte, fileName string) (*Safe, error) {
+	vault, err := util.NewSecureVault(password, fileName)
 	if err != nil {
-		log.Fatalf("could not create secure vault file: %v\n", err)
+		return nil, err
 	}
-
-	salt := make([]byte, 32)
-	rand.Read(salt)
-	cipherKey, err := scrypt.Key(password, salt, 32768, 8, 1, 32)
-	if err != nil {
-		log.Fatalf("could not generate cipher key from password and salt: %v\n", err)
-	}
-	_, secret := crypto.RandomAsymetricKey()
-	vault := SecureVault{
-		SecretKey:  secret,
+	safe := Safe{
 		Nodes:      make([]RegisteredNode, 0),
 		WalletKeys: make([]WalletKey, 0),
-		file:       file,
-		cipher:     crypto.CipherFromKey(cipherKey),
+		vault:      vault,
 	}
-	if n, err := file.Write(salt); n != len(salt) || err != nil {
-		log.Fatalf("could not write salto to secure vault file: %v\n", err)
+	return &safe, nil
+}
+
+func OpenVaultFromPassword(password []byte, fileName string) (*Safe, error) {
+	vault, err := util.OpenVaultFromPassword(password, fileName)
+	if err != nil {
+		return nil, err
 	}
-	sealed := vault.cipher.Seal(secret[:])
-	if n, err := file.Write(append([]byte{byte(len(sealed))}, sealed...)); n != len(sealed)+1 || err != nil {
-		log.Fatalf("could not write to secure vault file: %v\n", err)
+
+	safe := Safe{
+		Nodes:      make([]RegisteredNode, 0),
+		WalletKeys: make([]WalletKey, 0),
+		vault:      vault,
 	}
-	return &vault
+	for _, entry := range vault.Entries {
+		if len(entry) == 0 {
+			continue
+		} else if entry[0] == RegisteredNodeKind {
+			node := ParseRegisteredNode(entry)
+			if node != nil {
+				safe.Nodes = append(safe.Nodes, *node)
+			} else {
+				return nil, errors.New("could not parse node")
+			}
+		} else if entry[0] == WalletKeyKind {
+			wallet := ParseWalletKey(entry)
+			if wallet != nil {
+				safe.WalletKeys = append(safe.WalletKeys, *wallet)
+			} else {
+				return nil, errors.New("could not parse wallet key")
+			}
+		}
+	}
+	return &safe, nil
 }
