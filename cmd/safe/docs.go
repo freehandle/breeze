@@ -17,7 +17,7 @@ description of the node. The token is used to authenticate signed connection to
 the node.
 `
 
-const helpRemove = `usage: safe <path-tovault-file> register <node-id> 
+const helpRemove = `usage: safe <path-tovault-file> remove <node-id> 
 
 Remove the associated node from the pool of trusted nodes within the vault. 
 The action will only hjave effect if the provided node-id is already registered
@@ -72,6 +72,26 @@ associated to the secret key of the vault is configured with admin rights on the
 trusted node.
 `
 
+const helpTransfer = `usage: safe <path-tovault-file> transfer <token-amount> <from-account> <to-account>
+
+Will instruct node to transfer token-amount of funds from from-account to to-account.
+`
+
+const helpDeposit = `usage: safe <path-tovault-file> deposit <token-amount> <account>
+
+Will instruct node to deposit token-amount of funds to given account.
+`
+
+const helpWithdraw = `usage: safe <path-tovault-file> withdraw <token-amount> <account>
+
+Will instruct node to withdraw token-amount of funds from given account.
+`
+
+const helpBalance = `usage: safe <path-tovault-file> balance <account>
+
+Will instruct node to 
+`
+
 func help(cmd string) {
 	switch cmd {
 	case "create":
@@ -92,6 +112,14 @@ func help(cmd string) {
 		fmt.Print(helpRevoke)
 	case "activity":
 		fmt.Print(helpActivity)
+	case "transfer":
+		fmt.Print(helpTransfer)
+	case "deposit":
+		fmt.Print(helpDeposit)
+	case "withdraw":
+		fmt.Print(helpWithdraw)
+	case "balance":
+		fmt.Print(helpBalance)
 	default:
 		fmt.Print(usage)
 	}

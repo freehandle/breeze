@@ -15,7 +15,7 @@ var usage = `Usage:
 The commands are:
 
 	create    create new vault file
-	register  register trsuted node on breeze network
+	register  register trusted node on breeze network
 	remove    remove trusted node from breeze network
 	nodes     list all trusted nodes on breeze network
 	generate  generate new random key pair and secure them on vault
@@ -23,7 +23,11 @@ The commands are:
 	grant	  grant token with access to connect as a gateway or block listener
 	revoke    revoke token access to connect as a gateway or block listener
 	activity  instructs trusted node whether to candidate to become a validator. 
-	status    show status of a trusted node 
+	status    show status of a trusted node
+	transfer  transfer tokens between accounts
+	deposit	  deposit tokens in account
+	withdraw  withdraw tokens from account
+	balance	  get token balanece information of given account
 	
 Use "safe help <command>" for more information about a command.
 
@@ -41,6 +45,10 @@ const (
 	revokeCmd
 	activityCmd
 	statusCmd
+	transferCmd
+	depositCmd
+	withdrawCmd
+	balanceCmd
 )
 
 func readPassword(phrase string) []byte {
@@ -97,6 +105,14 @@ func parseCommand() byte {
 		return activityCmd
 	case "status":
 		return statusCmd
+	case "transfer":
+		return transferCmd
+	case "deposit":
+		return depositCmd
+	case "withdraw":
+		return withdrawCmd
+	case "balance":
+		return balanceCmd
 	default:
 		return noCmd
 	}

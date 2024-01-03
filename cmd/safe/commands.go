@@ -14,7 +14,7 @@ func parseCommandArgs(cmd byte, args []string) Command {
 		return &CreateCommand{}
 	case registerCmd:
 		if len(args) < 4 {
-			fmt.Println("insuficient arguments")
+			fmt.Println("insufficient arguments")
 			return nil
 		}
 		return &RegisterCommand{
@@ -32,6 +32,43 @@ func parseCommandArgs(cmd byte, args []string) Command {
 		}
 	case nodesCmd:
 		return &NodesCommand{}
+	case transferCmd:
+		if len(args) < 3 {
+			fmt.Println("insufficient arguments")
+			return nil
+		}
+		return &TransferCommand{
+			TokenAmount: args[0],
+			FromAccount: args[1],
+			ToAccount:   args[2],
+		}
+	case depositCmd:
+		if len(args) < 2 {
+			fmt.Println("insufficient arguments")
+			return nil
+		}
+		return &DepositCommand{
+			TokenAmount: args[0],
+			Account:     args[1],
+		}
+	case withdrawCmd:
+		if len(args) < 2 {
+			fmt.Println("insufficient arguments")
+			return nil
+		}
+		return &WithdrawCommand{
+			TokenAmount: args[0],
+			Account:     args[1],
+		}
+	case balanceCmd:
+		if len(args) < 1 {
+			fmt.Println("insufficient arguments")
+			return nil
+		}
+		return &BalanceCommand{
+			Account: args[0],
+		}
+
 	default:
 		return nil
 	}
@@ -108,5 +145,41 @@ func (c *NodesCommand) Execute(vault *Safe) error {
 	for _, node := range live {
 		fmt.Printf("%s\t%s\t%s\t%s\n", node.ID, node.Host, node.Token, node.Description)
 	}
+	return nil
+}
+
+type TransferCommand struct {
+	TokenAmount string
+	FromAccount string
+	ToAccount   string
+}
+
+func (c *TransferCommand) Execute(vault *Safe) error {
+	return nil
+}
+
+type DepositCommand struct {
+	TokenAmount string
+	Account     string
+}
+
+func (c *DepositCommand) Execute(vault *Safe) error {
+	return nil
+}
+
+type WithdrawCommand struct {
+	TokenAmount string
+	Account     string
+}
+
+func (c *WithdrawCommand) Execute(vault *Safe) error {
+	return nil
+}
+
+type BalanceCommand struct {
+	Account string
+}
+
+func (c *BalanceCommand) Execute(vault *Safe) error {
 	return nil
 }
