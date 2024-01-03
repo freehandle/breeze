@@ -25,6 +25,15 @@ Use "safe help <command>" for more information about a command.
 
 `
 
+const (
+	noCmd byte = iota
+	createCmd
+	registerCmd
+	removeCmd
+	nodesCmd
+	generateCmd
+)
+
 func ParseCommand(params ...string) {
 	if len(params) == 0 {
 		return
@@ -39,6 +48,57 @@ func ParseCommand(params ...string) {
 	}
 }
 
+func readPassword(phrase string) []byte {
+	fmt.Println(phrase)
+	password, err := term.ReadPassword(0)
+	for {
+		if err != nil {
+			fmt.Printf("Error reading password: %v\n", err)
+			os.Exit(1)
+		}
+		if len(password) == 0 {
+			fmt.Printf("Try again:\n")
+		} else {
+			break
+		}
+	}
+	return password
+}
+
+func create() {
+
+}
+
+func yesorno(caption string) bool {
+	var yes string
+	fmt.Print(caption)
+	fmt.Scan(&yes)
+	yes = strings.TrimSpace(strings.ToLower(yes))
+	return yes == "yes" || yes == "y"
+}
+
+func parseCommand() byte {
+	if len(os.Args) < 3 {
+		return noCmd
+	}
+	switch strings.ToLower(os.Args[2]) {
+	case "create":
+		return createCmd
+	case "register":
+		return registerCmd
+	case "remove":
+		return removeCmd
+	case "nodes":
+		return nodesCmd
+	case "generate":
+		return generateCmd
+	default:
+		return noCmd
+	}
+}
+
+func register()
+
 func main() {
 	ParseCommand(os.Args[1:]...)
 	if len(os.Args) < 2 {
@@ -46,23 +106,10 @@ func main() {
 		return
 	}
 	var safe *util.SecureVault
+	cmd := parseCommand()
 	if stat, _ := os.Stat(os.Args[1]); stat == nil {
-		fmt.Print("File does not exist. Create new [yes/no]?")
-		var yes string
-		fmt.Scan(&yes)
-		yes = strings.TrimSpace(strings.ToLower(yes))
-		if yes == "yes" || yes == "y" {
-			fmt.Println("Enter pass phrase to secure safe vault:")
-			password, err := term.ReadPassword(0)
-			if err != nil {
-				fmt.Printf("Error reading password: %v\n", err)
-				return
-			}
-			safe = util.NewSecureVault([]byte(password), os.Args[1])
-			if safe == nil {
-				fmt.Println("Could not create vault")
-				return
-			}
+		if cmd == createCmd || yesorno("File does not exist. Create new [yes/no]?") {
+			create()
 		} else {
 			return
 		}
@@ -70,16 +117,19 @@ func main() {
 		fmt.Println("File is a directory")
 		return
 	} else {
-		fmt.Println("Enter pass phrase:")
-		password, err := term.ReadPassword(0)
-		if err != nil {
-			fmt.Printf("Error reading password: %v\n", err)
+		if cmd == createCmd {
+			fmt.Println("File already exists")
 			return
 		}
+		password := readPassword("Enter pass phrase to open vault:")
 		safe = util.OpenVaultFromPassword([]byte(password), os.Args[1])
 		if safe == nil {
 			fmt.Println("Could not open vault")
 			return
 		}
+	}
+	if cmd == noCmd {
+		fmt.Println("done")
+		return
 	}
 }

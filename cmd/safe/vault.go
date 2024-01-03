@@ -1,11 +1,13 @@
 package main
 
 import (
+	"crypto/rand"
 	"io"
 	"log"
 	"os"
 
 	"github.com/freehandle/breeze/crypto"
+	"github.com/freehandle/breeze/crypto/scrypt"
 	"github.com/freehandle/breeze/util"
 )
 
@@ -124,4 +126,34 @@ func (vault *SecureVault) RemoveNode(host, description string, token crypto.Toke
 	}
 	vault.SecureItem(node.Serialize())
 	vault.Nodes = append(vault.Nodes, node)
+}
+
+func NewSecureVault(password []byte, fileName string) *SecureVault {
+	file, err := os.Create(fileName)
+	if err != nil {
+		log.Fatalf("could not create secure vault file: %v\n", err)
+	}
+
+	salt := make([]byte, 32)
+	rand.Read(salt)
+	cipherKey, err := scrypt.Key(password, salt, 32768, 8, 1, 32)
+	if err != nil {
+		log.Fatalf("could not generate cipher key from password and salt: %v\n", err)
+	}
+	_, secret := crypto.RandomAsymetricKey()
+	vault := SecureVault{
+		SecretKey:  secret,
+		Nodes:      make([]RegisteredNode, 0),
+		WalletKeys: make([]WalletKey, 0),
+		file:       file,
+		cipher:     crypto.CipherFromKey(cipherKey),
+	}
+	if n, err := file.Write(salt); n != len(salt) || err != nil {
+		log.Fatalf("could not write salto to secure vault file: %v\n", err)
+	}
+	sealed := vault.cipher.Seal(secret[:])
+	if n, err := file.Write(append([]byte{byte(len(sealed))}, sealed...)); n != len(sealed)+1 || err != nil {
+		log.Fatalf("could not write to secure vault file: %v\n", err)
+	}
+	return &vault
 }
