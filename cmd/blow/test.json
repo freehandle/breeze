@@ -1,0 +1,50 @@
+{
+	"address": "192.168.0.1",
+	"gossipPort": 5401,
+	"blocksPort": 5402,
+	"adminPort": 5403,
+	"walletPath": "/var/breeze/wallet",
+	"logPath": "/var/breeze/log",
+	"breeze": {
+		"permission": {
+			"pos" : {
+				"minimumStake": 1000000
+			}
+		}
+	},
+	"relay": {
+		"gateway": {
+			"port": 5404,
+			"throughput": 5000,
+			"dressActions": true,
+			"dressWalletToken": "7eb7aa3582b216bba42d45e91e0a560508478f5b55228439b42733945fd5c2f5",
+			"firewall": {
+				"openRelay": false,
+				"whitelist": [
+					{
+						"address": "192.168.0.2",
+						"token": "7eb7aa3582b216bba42d45e91e0a560508478f5b55228439b42733945fd5c2f5"
+					}
+				]
+			}
+		},
+		"blockStorage": {
+			"port": 5405,
+			"storagePath": "/var/breeze/blocks",
+			"indexWallets": true,
+			"firewall": {
+				"openRelay": true
+			}
+		}
+	},
+	"genesis": {
+		"wallets": [
+			{
+				"token": "7eb7aa3582b216bba42d45e91e0a560508478f5b55228439b42733945fd5c2f5",
+				"wallet": 999000000,
+				"deposit": 1000000
+			}
+		],
+		"networkID": "testnet"
+	}
+}

@@ -23,6 +23,8 @@ import (
 	"github.com/freehandle/breeze/crypto/edwards25519"
 )
 
+const AddressSize = 20
+
 type Signature [SignatureSize]byte
 
 var ZeroSignature Signature
@@ -87,6 +89,19 @@ func PrivateKeyFromSeed(seed [32]byte) PrivateKey {
 	return private
 }
 
+func IsValidPrivateKey(data []byte) bool {
+	if len(data) != PrivateKeySize {
+		return false
+	}
+	pk := PrivateKeyFromSeed([32]byte(data[0:32]))
+	for n := 0; n < PrivateKeySize; n++ {
+		if pk[n] != data[n] {
+			return false
+		}
+	}
+	return true
+}
+
 type PrivateKey [PrivateKeySize]byte
 
 func (p PrivateKey) PublicKey() Token {
@@ -97,16 +112,6 @@ func (p PrivateKey) PublicKey() Token {
 
 func (p PrivateKey) Hex() string {
 	return hex.EncodeToString(p[:])
-}
-
-func (p Token) Hex() string {
-	return hex.EncodeToString(p[:])
-}
-
-func (p Token) MarshalText() (text []byte, err error) {
-	text = make([]byte, 2*TokenSize)
-	hex.Encode(text, p[:])
-	return
 }
 
 func (p PrivateKey) Sign(msg []byte) Signature {
@@ -157,6 +162,16 @@ type Token [TokenSize]byte
 func (t Token) String() string {
 	text, _ := t.MarshalText()
 	return string(text)
+}
+
+func (t Token) Hex() string {
+	return hex.EncodeToString(t[:])
+}
+
+func (t Token) MarshalText() (text []byte, err error) {
+	text = make([]byte, 2*TokenSize)
+	hex.Encode(text, t[:])
+	return
 }
 
 func (t Token) UnmarshalText(text []byte) error {
@@ -238,4 +253,38 @@ func (t Token) Verify(msg []byte, signature Signature) bool {
 	R.ToBytes(&checkR)
 	return bytes.Equal(signature[:32], checkR[:])
 
+}
+
+type Address [AddressSize]byte
+
+func (t Token) Address() Address {
+	var address Address
+	hash := HashToken(t)
+	copy(address[:], hash[0:20])
+	return address
+}
+
+func (t Token) IsLike(a Address) bool {
+	hash := HashToken(t)
+	for n := 0; n < AddressSize; n++ {
+		if hash[n] != a[n] {
+			return false
+		}
+	}
+	return true
+}
+
+func (a Address) String() string {
+	text, _ := a.MarshalText()
+	return string(text)
+}
+
+func (a Address) Hex() string {
+	return hex.EncodeToString(a[:])
+}
+
+func (a Address) MarshalText() (text []byte, err error) {
+	text = make([]byte, 2*AddressSize)
+	hex.Encode(text, a[:])
+	return
 }

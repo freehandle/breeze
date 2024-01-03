@@ -224,7 +224,6 @@ func (t *testNetwork) Listen(address string) (net.Listener, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	host, ok := t.hosts[hostname]
 	if !ok {
 		return nil, errors.New("node not found")

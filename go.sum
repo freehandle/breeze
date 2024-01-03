@@ -1,0 +1,6 @@
+github.com/freehandle/cb v0.0.0-20231208135312-0344e092a799 h1:vrIvmCeaWIafyhg9gC79mAx/Zu2uDm7HN9qqPCuuxjs=
+github.com/freehandle/cb v0.0.0-20231208135312-0344e092a799/go.mod h1:fziAcL1C1cryvkXwemSjVy+9fZG3pjspQY2XUcaHFe4=
+golang.org/x/sys v0.15.0 h1:h48lPFYpsTvQJZF4EKyI4aLHaev3CxivZmv7yZig9pc=
+golang.org/x/sys v0.15.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
+golang.org/x/term v0.15.0 h1:y/Oo/a/q3IXu26lQgl04j/gjuBDOBlx7X6Om1j2CPW4=
+golang.org/x/term v0.15.0/go.mod h1:BDl952bC7+uMoWR75FIrCDx79TPU9oHkTZ9yRbYOrX0=
