@@ -2,8 +2,10 @@ package swell
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	"github.com/freehandle/breeze/consensus/admin"
 	"github.com/freehandle/breeze/consensus/bft"
 	"github.com/freehandle/breeze/consensus/chain"
 	"github.com/freehandle/breeze/consensus/messages"
@@ -38,11 +40,12 @@ type BlockConsensusConfirmation struct {
 
 // ValidatorConfig defines the configuration for a validator node.
 type ValidatorConfig struct {
-	Credentials    crypto.PrivateKey
-	WalletPath     string
-	SwellConfig    SwellNetworkConfiguration
-	Actions        *store.ActionStore
+	Credentials crypto.PrivateKey
+	WalletPath  string
+	SwellConfig SwellNetworkConfiguration
+	//Actions        *store.ActionStore
 	Relay          *relay.Node
+	Admin          *admin.Administration
 	Hostname       string
 	TrustedGateway []socket.TokenAddr
 }
@@ -64,9 +67,11 @@ func NewGenesisNode(ctx context.Context, wallet crypto.PrivateKey, config Valida
 		},
 		config:   config.SwellConfig,
 		relay:    config.Relay,
+		admin:    config.Admin,
 		hostname: config.Hostname,
 	}
 	RunActionsGateway(ctx, config.Relay.ActionGateway, node.actions)
+	go node.ServeAdmin(ctx)
 	window := Window{
 		ctx:       ctx,
 		Start:     1,
@@ -140,10 +145,30 @@ type SwellNode struct {
 	credentials crypto.PrivateKey         // credentials for the node
 	blockchain  *chain.Blockchain         // node's version of breeze blockchain
 	actions     *store.ActionStore        // actions received through the actions gateway
+	admin       *admin.Administration     // administration interface
 	config      SwellNetworkConfiguration // parameters of the underlying network
 	active      chan chan error
 	relay       *relay.Node // (optional) relay network
 	hostname    string      // "localhost" or empty for internet, anything else for testing
+}
+
+func (s *SwellNode) AdminReport() string {
+	status := ""
+	if s.relay != nil {
+		status = fmt.Sprintf("%vRelay Report\n===========\n%v", status, s.relay.Status())
+	}
+	return status
+}
+
+func (s *SwellNode) ServeAdmin(ctx context.Context) {
+	for {
+		select {
+		case req := <-s.admin.Status:
+			req <- s.AdminReport()
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 func (s *SwellNode) TimeStampBlock(epoch uint64) time.Time {

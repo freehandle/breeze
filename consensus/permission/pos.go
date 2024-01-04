@@ -86,9 +86,9 @@ func (p Permissionless) DeterminePool(chain *chain.Blockchain, candidates []cryp
 }
 
 // NewProofOfStake returns a new empty ProofOfStake.
-func NewProofOfAuthority() *ProofOfAuthority {
+func NewProofOfAuthority(tokens ...crypto.Token) *ProofOfAuthority {
 	return &ProofOfAuthority{
-		Authorized: make([]crypto.Token, 0),
+		Authorized: tokens,
 	}
 }
 

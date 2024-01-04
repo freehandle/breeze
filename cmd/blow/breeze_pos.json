@@ -1,0 +1,56 @@
+{
+	"token" : "7eb7aa3582b216bba42d45e91e0a560508478f5b55228439b42733945fd5c2f5",
+    "address": "lienko.com",
+	"adminPort": 5403,
+	"walletPath": "",
+	"logPath": "/var/breeze/log",
+	"breeze": {
+		"gossipPort": 5401,
+		"blocksPort": 5402,
+		"permission": {
+			"pos" : {
+				"minimumStake": 1000000
+			}
+		},
+		"blockInterval": 1000,
+		"checksumWindowBlocks": 900,
+		"checksumCommitteeSize": 100,
+		"maxBlockSize": 100000000,
+		"swell" : {
+			"committeeSize": 10,
+			"proposeTimeout": 1500,
+			"voteTimeout": 1000,
+			"commitTimeout": 1000
+		}
+	},
+	"relay": {
+		"gateway": {
+			"port": 5404,
+			"throughput": 5000,
+			"maxConnections": 100,
+			"firewall": {
+				"openRelay": false,
+				"whitelist": [ "7eb7aa3582b216bba42d45e91e0a560508478f5b55228439b42733945fd5c2f5" ]
+			}
+		},
+		"blockStorage": {
+			"port": 5405,
+			"storagePath": "/var/breeze/blocks",
+			"indexWallets": true,
+			"maxConnections": 20,
+			"firewall": {
+				"openRelay": true
+			}
+		}
+	},
+	"genesis": {
+		"wallets": [
+			{
+				"token": "7eb7aa3582b216bba42d45e91e0a560508478f5b55228439b42733945fd5c2f5",
+				"wallet": 999000000,
+				"deposit": 1000000
+			}
+		],
+		"networkID": "testnet"
+	}
+}
