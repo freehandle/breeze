@@ -49,6 +49,7 @@ const (
 	depositCmd
 	withdrawCmd
 	balanceCmd
+	configCmd
 )
 
 func readPassword(phrase string) []byte {
@@ -113,6 +114,8 @@ func parseCommand() byte {
 		return withdrawCmd
 	case "balance":
 		return balanceCmd
+	case "config":
+		return configCmd
 	default:
 		return noCmd
 	}

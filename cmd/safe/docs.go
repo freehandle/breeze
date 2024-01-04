@@ -92,6 +92,11 @@ const helpBalance = `usage: safe <path-tovault-file> balance <account>
 Will instruct node to 
 `
 
+const helpConfig = `usage: safe <path-tovault-file> config <variable> <node-id>
+
+Will instruct .
+`
+
 func help(cmd string) {
 	switch cmd {
 	case "create":
@@ -120,6 +125,8 @@ func help(cmd string) {
 		fmt.Print(helpWithdraw)
 	case "balance":
 		fmt.Print(helpBalance)
+	case "config":
+		fmt.Print(helpConfig)
 	default:
 		fmt.Print(usage)
 	}

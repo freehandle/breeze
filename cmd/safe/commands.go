@@ -68,6 +68,15 @@ func parseCommandArgs(cmd byte, args []string) Command {
 		return &BalanceCommand{
 			Account: args[0],
 		}
+	case configCmd:
+		if len(args) < 2 {
+			fmt.Println("insufficient arguments")
+			return nil
+		}
+		return &ConfigCommand{
+			Variable: args[0],
+			NodeID:   args[1],
+		}
 
 	default:
 		return nil
@@ -181,5 +190,14 @@ type BalanceCommand struct {
 }
 
 func (c *BalanceCommand) Execute(vault *Safe) error {
+	return nil
+}
+
+type ConfigCommand struct {
+	Variable string
+	NodeID   string
+}
+
+func (c *ConfigCommand) Execute(vault *Safe) error {
 	return nil
 }
