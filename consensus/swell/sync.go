@@ -80,8 +80,10 @@ func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync soc
 		credentials: config.Credentials,
 		config:      config.SwellConfig,
 		relay:       config.Relay,
+		admin:       config.Admin,
 		hostname:    config.Hostname,
 	}
+	go node.ServeAdmin(ctx)
 	RunActionsGateway(ctx, config.Relay.ActionGateway, node.actions)
 	windowDuration := uint64(config.SwellConfig.ChecksumWindow)
 	windowStart := windowDuration*(checksum.Epoch/windowDuration) + 1

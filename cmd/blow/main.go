@@ -4,100 +4,152 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
+	"github.com/freehandle/breeze/consensus/permission"
+	"github.com/freehandle/breeze/consensus/relay"
+	"github.com/freehandle/breeze/consensus/swell"
 	"github.com/freehandle/breeze/crypto"
-	"github.com/freehandle/breeze/middleware/admin"
 	"github.com/freehandle/breeze/socket"
 )
 
-func CreateNodeFromGenesis(config *NodeConfig) error {
-	if config.Genesis == nil {
-		return errors.New("genesis configuration not specified")
+const usage = "usage: blow <path-to-json-config-file> [genesis|sync address token]"
+
+func main() {
+	var err error
+	ctx, _ := context.WithCancel(context.Background())
+	if len(os.Args) < 3 {
+		fmt.Println(usage)
+		os.Exit(1)
 	}
+	config, err := LoadConfig(os.Args[1])
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	swellConfig := SwellConfigFromConfig(config)
+	relay, err := RelayFromConfig(ctx, config, crypto.ZeroPrivateKey)
+	if err != nil {
+		fmt.Printf("could not open relay ports: %v\n", err)
+		os.Exit(1)
+	}
+	if os.Args[2] == "genesis" {
+		admin, pk := WaitForKeysSync(ctx, config)
+		if admin == nil {
+			fmt.Println("canceled")
+			os.Exit(1)
+		}
+		err = CreateNodeFromGenesis(ctx, config, pk)
+	} else if len(os.Args) < 5 {
+		fmt.Println(usage)
+		os.Exit(1)
+	} else {
+		tokenAddr := socket.TokenAddr{
+			Addr:  os.Args[3],
+			Token: crypto.TokenFromString(os.Args[4]),
+		}
+		if tokenAddr.Token.Equal(crypto.ZeroToken) {
+			fmt.Printf("invalid token: %v\n%v\n", os.Args[4], usage)
+			os.Exit(1)
+		}
+		admin, pk := WaitForKeysSync(ctx, config)
+		validatorConfig := swell.ValidatorConfig{
+			Credentials:    pk,
+			WalletPath:     config.WalletPath,
+			SwellConfig:    swellConfig,
+			Relay:          relay,
+			Admin:          admin,
+			TrustedGateway: TokenAddrArrayFromPeeers(config.TrustedNodes),
+		}
+		if admin == nil {
+			fmt.Println("canceled")
+			os.Exit(1)
+		}
+		err = swell.FullSyncValidatorNode(ctx, validatorConfig, socket.TokenAddr{})
+	}
+	fmt.Printf("blow node terminated: %v\n", err)
+}
+
+func TokenAddrFromPeer(peer Peer) socket.TokenAddr {
+	return socket.TokenAddr{
+		Addr:  peer.Address,
+		Token: crypto.TokenFromString(peer.Token),
+	}
+}
+
+func TokenAddrArrayFromPeeers(peers []Peer) []socket.TokenAddr {
+	addrs := make([]socket.TokenAddr, 0)
+	for _, peer := range peers {
+		tokenAddr := TokenAddrFromPeer(peer)
+		if !tokenAddr.Token.Equal(crypto.ZeroToken) {
+			addrs = append(addrs, tokenAddr)
+		}
+	}
+	return addrs
+}
+
+func RelayNode(ctx context.Context, config *NodeConfig, secret crypto.PrivateKey) error {
 	return nil
 }
 
-func WaitForKeys(ctx context.Context, dh chan crypto.PrivateKey, status chan chan string, tokens ...crypto.Token) chan []crypto.PrivateKey {
-	completed := make(chan []crypto.PrivateKey)
-	secrets := make([]crypto.PrivateKey, 0)
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				completed <- nil
-				return
-			case pk := <-dh:
-				tk := pk.PublicKey()
-				fmt.Println("new key for", tk)
-				for i, token := range tokens {
-					if token == tk {
-						secrets = append(secrets, pk)
-						tokens = append(tokens[:i], tokens[i+1:]...)
-						if len(tokens) == 0 {
-							completed <- secrets
-							return
-						}
-					}
-				}
-			case req := <-status:
-				req <- fmt.Sprintf("waiting for %v more keys", len(tokens))
-			}
-
+func RelayFromConfig(ctx context.Context, config *NodeConfig, pk crypto.PrivateKey) (*relay.Node, error) {
+	listGateways := make([]crypto.Token, 0)
+	for _, peer := range config.Relay.Gateway.Firewall.Whitelist {
+		if token := crypto.TokenFromString(peer); !token.Equal(crypto.ZeroToken) {
+			listGateways = append(listGateways, token)
 		}
-	}()
-	return completed
+	}
+	listBlockListeners := make([]crypto.Token, 0)
+	for _, peer := range config.Relay.BlockStorage.Firewall.Whitelist {
+		if token := crypto.TokenFromString(peer); !token.Equal(crypto.ZeroToken) {
+			listBlockListeners = append(listBlockListeners, token)
+		}
+	}
+
+	firewall := relay.Firewall{
+		AcceptGateway:       socket.NewValidConnections(listGateways, config.Relay.Gateway.Firewall.OpenRelay),
+		AcceptBlockListener: socket.NewValidConnections(listBlockListeners, config.Relay.BlockStorage.Firewall.OpenRelay),
+	}
+
+	relayConfig := relay.Config{
+		Credentials:       pk,
+		GatewayPort:       config.Relay.Gateway.Port,
+		BlockListenerPort: config.Relay.BlockStorage.Port,
+		Firewall:          &firewall,
+	}
+	return relay.Run(ctx, relayConfig)
 }
 
-func main() {
-	socket.TCPNetworkTest.AddNode("server", 1.0, 10*time.Millisecond, 1e9)
-	socket.TCPNetworkTest.AddNode("client", 1.0, 10*time.Millisecond, 1e9)
-
-	tk, pk := crypto.RandomAsymetricKey()
-	tk1, pk1 := crypto.RandomAsymetricKey()
-	tk2, pk2 := crypto.RandomAsymetricKey()
-	_, cpk := crypto.RandomAsymetricKey()
-	ctx := context.Background()
-	dh := make(chan crypto.PrivateKey)
-	status := make(chan chan string)
-	server := admin.AdminServer{
-		Hostname:      "server",
-		Firewall:      socket.AcceptAllConnections,
-		Secret:        pk,
-		Port:          6000,
-		Status:        status,
-		DiffieHellman: dh,
+func SwellConfigFromConfig(config *NodeConfig) swell.SwellNetworkConfiguration {
+	swell := swell.SwellNetworkConfiguration{
+		NetworkHash:    crypto.Hasher([]byte(config.Genesis.NetworkID)),
+		MaxPoolSize:    config.Breeze.ChecksumCommitteeSize,
+		BlockInterval:  time.Duration(config.Breeze.BlockInterval) * time.Millisecond,
+		ChecksumWindow: config.Breeze.ChecksumWindowBlocks,
 	}
-	server.Start(ctx)
-
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		client, err := admin.DialAdmin("client", socket.TokenAddr{Addr: "server:6000", Token: tk}, cpk)
-		if err != nil {
-			panic(err)
+	if poa := config.Breeze.Permission.POA; poa != nil {
+		tokens := make([]crypto.Token, len(poa.TrustedNodes))
+		for _, trusted := range poa.TrustedNodes {
+			var token crypto.Token
+			token = crypto.TokenFromString(trusted)
+			if !token.Equal(crypto.ZeroToken) {
+				tokens = append(tokens, token)
+			}
 		}
-		status, err := client.Status()
-		if err != nil {
-			panic(err)
-		}
-		fmt.Println(status)
-		time.Sleep(200 * time.Millisecond)
-		err = client.SendSecret(pk1)
-		if err != nil {
-			panic(err)
-		}
-		time.Sleep(200 * time.Millisecond)
-		err = client.SendSecret(pk2)
-		if err != nil {
-			panic(err)
-		}
-	}()
-	pks := <-WaitForKeys(ctx, dh, status, tk1, tk2)
+		swell.Permission = permission.NewProofOfAuthority(tokens...)
+	} else if pos := config.Breeze.Permission.POS; pos != nil {
+		swell.Permission = &permission.ProofOfStake{MinimumStage: uint64(pos.MinimumStake)}
+	} else {
+		swell.Permission = permission.Permissionless{}
+	}
+	return swell
+}
 
-	fmt.Println(pk1)
-	fmt.Println(pks[0])
+func CreateNodeFromGenesis(ctx context.Context, config *NodeConfig, secret crypto.PrivateKey) error {
+	if config.Genesis == nil {
+		return errors.New("genesis configuration not specified")
+	}
 
-	fmt.Println(pk2)
-	fmt.Println(pks[1])
-
+	return nil
 }

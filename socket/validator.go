@@ -1,6 +1,7 @@
 package socket
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/freehandle/breeze/crypto"
@@ -10,6 +11,7 @@ import (
 // a given token is accredited with rights to establish the connection.
 type ValidateConnection interface {
 	ValidateConnection(token crypto.Token) chan bool
+	String() string
 }
 
 // An implementation with ValidateConnection interface that accepts all reequested
@@ -17,6 +19,10 @@ type ValidateConnection interface {
 var AcceptAllConnections = acceptAll{}
 
 type acceptAll struct{}
+
+func (a acceptAll) String() string {
+	return "accept all connections"
+}
 
 // ValidateConnection returns a channel with value true.
 func (a acceptAll) ValidateConnection(token crypto.Token) chan bool {
@@ -29,6 +35,10 @@ func (a acceptAll) ValidateConnection(token crypto.Token) chan bool {
 // connection from a single token.
 type ValidateSingleConnection crypto.Token
 
+func (v ValidateSingleConnection) String() string {
+	return fmt.Sprintf("accept only connection from %v", crypto.Token(v))
+}
+
 // ValidateConnection returns a channel with true if the given token is equal to
 // the token assocated with ValidateSingleConnection and false otherwise.
 func (v ValidateSingleConnection) ValidateConnection(token crypto.Token) chan bool {
@@ -40,22 +50,37 @@ func (v ValidateSingleConnection) ValidateConnection(token crypto.Token) chan bo
 // An implementation with ValidateConnection interface that accepts only
 // connections from a list of tokens.
 type AcceptValidConnections struct {
-	mu    sync.Mutex
-	valid []crypto.Token
+	mu   sync.Mutex
+	list []crypto.Token
+	open bool
+}
+
+func (a *AcceptValidConnections) String() string {
+	tokenList := ""
+	for _, token := range a.list {
+		tokenList = fmt.Sprintf("%v%v ", tokenList, token)
+	}
+	if a.open {
+		return fmt.Sprintf("accept all connections except %v", tokenList)
+	} else {
+		return fmt.Sprintf("block all connections except %v", tokenList)
+	}
 }
 
 // NewValidConnections returns a new AcceptValidConnections with the given
 // list of tokens.
-func NewValidConnections(conn []crypto.Token) *AcceptValidConnections {
+func NewValidConnections(conn []crypto.Token, open bool) *AcceptValidConnections {
 	if len(conn) == 0 {
 		return &AcceptValidConnections{
-			mu:    sync.Mutex{},
-			valid: make([]crypto.Token, 0),
+			mu:   sync.Mutex{},
+			list: make([]crypto.Token, 0),
+			open: open,
 		}
 	}
 	return &AcceptValidConnections{
-		mu:    sync.Mutex{},
-		valid: conn,
+		mu:   sync.Mutex{},
+		list: conn,
+		open: open,
 	}
 }
 
@@ -63,21 +88,45 @@ func NewValidConnections(conn []crypto.Token) *AcceptValidConnections {
 func (a *AcceptValidConnections) Add(token crypto.Token) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	for _, valid := range a.valid {
-		if valid.Equal(token) {
-			return
+	if a.open {
+		// exclude from blacklist if open by default
+		for n, black := range a.list {
+			if black.Equal(token) {
+				a.list = append(a.list[:n], a.list[n+1:]...)
+				return
+			}
 		}
+	} else {
+		// include in whitelist if closed by default
+		for _, white := range a.list {
+			if white.Equal(token) {
+				return
+			}
+		}
+		a.list = append(a.list, token)
 	}
-	a.valid = append(a.valid, token)
+
 }
 
 // Remove removes a token from the list of valid tokens.
 func (a *AcceptValidConnections) Remove(token crypto.Token) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	for n, valid := range a.valid {
-		if valid.Equal(token) {
-			a.valid = append(a.valid[:n], a.valid[n+1:]...)
+	if a.open {
+		// include on blacklist if open by default
+		for _, black := range a.list {
+			if black.Equal(token) {
+				return
+			}
+		}
+		a.list = append(a.list, token)
+	} else {
+		// exclude from white if closed by default
+		for n, white := range a.list {
+			if white.Equal(token) {
+				a.list = append(a.list[:n], a.list[n+1:]...)
+				return
+			}
 		}
 	}
 }
@@ -88,12 +137,23 @@ func (a *AcceptValidConnections) ValidateConnection(token crypto.Token) chan boo
 	response := make(chan bool, 2)
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	for _, valid := range a.valid {
-		if valid.Equal(token) {
-			response <- true
-			return response
+	if a.open {
+		for _, black := range a.list {
+			if black.Equal(token) {
+				response <- false
+				return response
+			}
 		}
+		response <- true
+		return response
+	} else {
+		for _, white := range a.list {
+			if white.Equal(token) {
+				response <- true
+				return response
+			}
+		}
+		response <- false
+		return response
 	}
-	response <- false
-	return response
 }

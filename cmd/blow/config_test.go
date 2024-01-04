@@ -23,8 +23,6 @@ var config string = `
 		"gateway": {
 			"port": 5404,
 			"throughput": 5000,
-			"dressActions": true,
-			"dressWalletToken": "7eb7aa3582b216bba42d45e91e0a560508478f5b55228439b42733945fd5c2f5",
 			"firewall": {
 				"openRelay": false,
 				"whitelist": [
@@ -93,22 +91,13 @@ func TestConfigParse(t *testing.T) {
 	if c.Relay.Gateway.Throughput != 5000 {
 		t.Error("Gateway.Throughput field not parsed correctly")
 	}
-	if !c.Relay.Gateway.DressActions {
-		t.Error("Gateway.DressActions field not parsed correctly")
-	}
-	if c.Relay.Gateway.DressWalletToken != token {
-		t.Error("Gateway.DressWalletToken field not parsed correctly", c.Relay.Gateway.DressWalletToken, token)
-	}
 	if c.Relay.Gateway.Firewall.OpenRelay {
 		t.Error("Gateway.Firewall.OpenRelay field not parsed correctly")
 	}
 	if len(c.Relay.Gateway.Firewall.Whitelist) != 1 {
 		t.Error("Gateway.Firewall.Whitelist field not parsed correctly")
 	}
-	if c.Relay.Gateway.Firewall.Whitelist[0].Address != "192.168.0.2" {
-		t.Error("Gateway.Firewall.Whitelist[0].Address field not parsed correctly")
-	}
-	if c.Relay.Gateway.Firewall.Whitelist[0].Token != token {
+	if c.Relay.Gateway.Firewall.Whitelist[0] != token {
 		t.Error("Gateway.Firewall.Whitelist[0].Token field not parsed correctly")
 	}
 	if c.Relay.BlockStorage.Port != 5405 {

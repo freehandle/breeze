@@ -14,6 +14,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/freehandle/breeze/consensus/admin"
 	"github.com/freehandle/breeze/consensus/messages"
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/socket"
@@ -31,7 +32,6 @@ type Shutdowner interface {
 type Config struct {
 	GatewayPort       int
 	BlockListenerPort int
-	AdminPort         int
 	Firewall          *Firewall
 	Credentials       crypto.PrivateKey
 	Hostname          string
@@ -39,10 +39,10 @@ type Config struct {
 
 // NewFireWall returns a new firewall with the authorized gateway and block listener
 // tokens.
-func NewFireWall(authorizedGateway []crypto.Token, autorizedBlockListener []crypto.Token) *Firewall {
+func NewFireWall(authorizedGateway []crypto.Token, autorizedBlockListener []crypto.Token, openGateway, opeanBlockListener bool) *Firewall {
 	return &Firewall{
-		AcceptGateway:       socket.NewValidConnections(authorizedGateway),
-		AcceptBlockListener: socket.NewValidConnections(autorizedBlockListener),
+		AcceptGateway:       socket.NewValidConnections(authorizedGateway, openGateway),
+		AcceptBlockListener: socket.NewValidConnections(autorizedBlockListener, opeanBlockListener),
 	}
 
 }
@@ -59,10 +59,37 @@ type Firewall struct {
 // events. SyncRequest channel should be read by the validating node to receive
 // requests for state sync and recenet blocks sync.
 type Node struct {
-	ActionGateway chan []byte      // Sends actions to swell engine
-	BlockEvents   chan []byte      // receive block events from swell engine
-	SyncRequest   chan SyncRequest // sends sync requests to swell engine
-	Statement     chan []byte
+	ActionGateway      chan []byte      // Sends actions to swell engine
+	BlockEvents        chan []byte      // receive block events from swell engine
+	SyncRequest        chan SyncRequest // sends sync requests to swell engine
+	Statement          chan []byte
+	Firewall           chan admin.FirewallAction
+	config             *Config
+	gatewayConnections map[crypto.Token]*socket.SignedConnection
+	pool               socket.ConnectionPool
+}
+
+func (n *Node) Status() string {
+	status := ""
+	if len(n.gatewayConnections) > 0 {
+		status = fmt.Sprintf("%vthere are %v gateway connected\n", status, len(n.gatewayConnections))
+	} else {
+		status = fmt.Sprintf("%vthere is no gateway connected\n", status)
+	}
+	if len(n.pool) > 0 {
+		status = fmt.Sprintf("%vthere are %v block listener connected\n", status, len(n.pool))
+	} else {
+		status = fmt.Sprintf("%vthere is no block listener connected\n", status)
+	}
+	if firewall := n.config.Firewall; firewall != nil {
+		if gateway := firewall.AcceptGateway; gateway != nil {
+			status = fmt.Sprintf("%vgateway rule: %v\n", status, gateway.String())
+		}
+		if blocks := firewall.AcceptBlockListener; blocks != nil {
+			status = fmt.Sprintf("%vblock listener rule: %v\n", status, blocks.String())
+		}
+	}
+	return status
 }
 
 // SyncRequest defines a request for state sync and recent blocks sync. Epoch
@@ -76,52 +103,49 @@ type SyncRequest struct {
 
 // Run starts a relay network. It returns a Node and an error. On cancelation
 // of the context, the entire relay network is graciously shutdown.
-func Run(ctx context.Context, config Config) (*Node, error) {
+func Run(ctx context.Context, cfg Config) (*Node, error) {
 	n := &Node{
 		ActionGateway: make(chan []byte),
 		Statement:     make(chan []byte),
 		BlockEvents:   make(chan []byte),
 		SyncRequest:   make(chan SyncRequest),
+		Firewall:      make(chan admin.FirewallAction),
+		config:        &cfg,
 	}
 
 	var listenAdminPort net.Listener
 
-	gatewayPort, err := socket.Listen(fmt.Sprintf("%v:%v", config.Hostname, config.GatewayPort))
+	gatewayPort, err := socket.Listen(fmt.Sprintf("%v:%v", n.config.Hostname, n.config.GatewayPort))
 	if err != nil {
-		return nil, fmt.Errorf("could not listen on port %v: %v", config.GatewayPort, err)
+		return nil, fmt.Errorf("could not listen on port %v: %v", n.config.GatewayPort, err)
 	}
 
-	blocksPort, err := socket.Listen(fmt.Sprintf("%v:%v", config.Hostname, config.BlockListenerPort))
+	blocksPort, err := socket.Listen(fmt.Sprintf("%v:%v", n.config.Hostname, n.config.BlockListenerPort))
 	if err != nil {
-		return nil, fmt.Errorf("could not listen on port %v: %v", config.BlockListenerPort, err)
+		return nil, fmt.Errorf("could not listen on port %v: %v", n.config.BlockListenerPort, err)
 	}
 
 	endGateway := make(chan crypto.Token)
 	newGateway := make(chan *socket.SignedConnection)
-	gatewayConnections := make(map[crypto.Token]*socket.SignedConnection)
+	n.gatewayConnections = make(map[crypto.Token]*socket.SignedConnection)
 
 	newBlockListener := make(chan SyncRequest)
 	action := make(chan []byte)
 	cloned := make(chan bool)
-	pool := make(socket.ConnectionPool)
+	n.pool = make(socket.ConnectionPool)
 
 	dropConnection := make(chan crypto.Token)
-
-	adminConnections := make([]Shutdowner, 0)
 
 	// manage incoming connections and block formation
 	go func() {
 		defer func() {
-			pool.DropAll()
+			n.pool.DropAll()
 			gatewayPort.Close()
 			blocksPort.Close()
 			if listenAdminPort != nil {
 				listenAdminPort.Close()
 			}
-			for _, conn := range gatewayConnections {
-				conn.Shutdown()
-			}
-			for _, conn := range adminConnections {
+			for _, conn := range n.gatewayConnections {
 				conn.Shutdown()
 			}
 		}()
@@ -131,10 +155,10 @@ func Run(ctx context.Context, config Config) (*Node, error) {
 			case <-cancel:
 				return
 			case token := <-endGateway:
-				delete(gatewayConnections, token)
+				delete(n.gatewayConnections, token)
 			case conn := <-newGateway:
 				if conn != nil {
-					gatewayConnections[conn.Token] = conn
+					n.gatewayConnections[conn.Token] = conn
 					go WaitForProtocolActions(conn, endGateway, action)
 				}
 			case proposed := <-action:
@@ -150,12 +174,22 @@ func Run(ctx context.Context, config Config) (*Node, error) {
 			case ok := <-cloned:
 				log.Printf("state cloned: %v", ok)
 			case blockEvent := <-n.BlockEvents:
-				pool.Broadcast(blockEvent)
+				n.pool.Broadcast(blockEvent)
 			case req := <-newBlockListener:
-				pool.Add(req.Conn)
+				n.pool.Add(req.Conn)
 				n.SyncRequest <- req
 			case token := <-dropConnection:
-				pool.Drop(token)
+				n.pool.Drop(token)
+			case action := <-n.Firewall:
+				if action.Scope == admin.GrantGateway {
+					n.config.Firewall.AcceptGateway.Add(action.Token)
+				} else if action.Scope == admin.RevokeGateway {
+					n.config.Firewall.AcceptGateway.Remove(action.Token)
+				} else if action.Scope == admin.GrantBlockListener {
+					n.config.Firewall.AcceptBlockListener.Add(action.Token)
+				} else if action.Scope == admin.RevokeBlockListener {
+					n.config.Firewall.AcceptBlockListener.Remove(action.Token)
+				}
 			}
 		}
 	}()
@@ -165,12 +199,12 @@ func Run(ctx context.Context, config Config) (*Node, error) {
 		for {
 			if conn, err := gatewayPort.Accept(); err == nil {
 				var accept socket.ValidateConnection
-				if config.Firewall != nil {
-					accept = config.Firewall.AcceptGateway
+				if n.config.Firewall != nil {
+					accept = n.config.Firewall.AcceptGateway
 				} else {
 					accept = socket.AcceptAllConnections
 				}
-				trustedConn, err := socket.PromoteConnection(conn, config.Credentials, accept)
+				trustedConn, err := socket.PromoteConnection(conn, n.config.Credentials, accept)
 				if err != nil {
 					conn.Close()
 				}
@@ -184,12 +218,12 @@ func Run(ctx context.Context, config Config) (*Node, error) {
 		for {
 			if conn, err := blocksPort.Accept(); err == nil {
 				var accept socket.ValidateConnection
-				if config.Firewall != nil {
-					accept = config.Firewall.AcceptBlockListener
+				if n.config.Firewall != nil {
+					accept = n.config.Firewall.AcceptBlockListener
 				} else {
 					accept = socket.AcceptAllConnections
 				}
-				trustedConn, err := socket.PromoteConnection(conn, config.Credentials, accept)
+				trustedConn, err := socket.PromoteConnection(conn, n.config.Credentials, accept)
 				if err != nil {
 					conn.Close()
 				}
@@ -201,26 +235,6 @@ func Run(ctx context.Context, config Config) (*Node, error) {
 		}
 	}()
 
-	if config.AdminPort > 0 {
-		var err error
-		listenAdminPort, err = socket.Listen(fmt.Sprintf("%v:%v", config.Hostname, config.AdminPort))
-		if err != nil {
-			return nil, fmt.Errorf("could not listen on port %v: %v", config.BlockListenerPort, err)
-		}
-		go func() {
-			validator := socket.ValidateSingleConnection(config.Credentials.PublicKey())
-			for {
-				if conn, err := listenAdminPort.Accept(); err == nil {
-					trustedConn, err := socket.PromoteConnection(conn, config.Credentials, validator)
-					if err != nil {
-						conn.Close()
-					}
-					adminConnections = append(adminConnections, trustedConn)
-					go AdminConnection(trustedConn, config.Firewall)
-				}
-			}
-		}()
-	}
 	return n, nil
 }
 
@@ -273,50 +287,6 @@ func WaitForOutgoingSyncRequest(conn *socket.SignedConnection, outgoing chan Syn
 			}
 		} else if data[0] == messages.MsgChecksumStatement {
 			action <- data
-		}
-	}
-}
-
-// AdminMsgType processes messages received from connection over the admin port.
-// Messages are of the following type:
-// MsgAddGateway, MsgRemoveGateway, MsgAddBlocklistener, MsgRemoveBlocklistener
-// and MsgShutdown.
-func AdminConnection(conn *socket.SignedConnection, firewall *Firewall) {
-	for {
-		msg, err := conn.Read()
-		if err != nil || len(msg) < 9 {
-			return
-		}
-		kind := AdminMsgType(msg)
-		if kind >= MsgAddGateway && kind <= MsgRemoveBlocklistener {
-			count, token := ParseTokenMsg(msg)
-			if firewall == nil {
-				conn.Send(Response(count, false))
-			}
-			ok := false
-			switch kind {
-			case MsgAddGateway:
-				if firewall.AcceptGateway != nil {
-					firewall.AcceptGateway.Add(token)
-					ok = true
-				}
-			case MsgRemoveGateway:
-				if firewall.AcceptGateway != nil {
-					firewall.AcceptGateway.Remove(token)
-					ok = true
-				}
-			case MsgAddBlocklistener:
-				if firewall.AcceptBlockListener != nil {
-					firewall.AcceptBlockListener.Add(token)
-					ok = true
-				}
-			case MsgRemoveBlocklistener:
-				if firewall.AcceptBlockListener != nil {
-					firewall.AcceptBlockListener.Remove(token)
-					ok = true
-				}
-			}
-			conn.Send(Response(count, ok))
 		}
 	}
 }

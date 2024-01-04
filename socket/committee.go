@@ -160,7 +160,7 @@ func AssembleCommittee[T TokenComparer](ctx context.Context, peers []CommitteeMe
 		for _, member := range peers {
 			tokens = append(tokens, member.Token)
 		}
-		validConnections := NewValidConnections(tokens)
+		validConnections := NewValidConnections(tokens, false)
 		for {
 			if conn, err := listener.Accept(); err == nil {
 				trustedConn, err := PromoteConnection(conn, credentials, validConnections)
