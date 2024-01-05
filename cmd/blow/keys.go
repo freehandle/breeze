@@ -13,8 +13,8 @@ import (
 func WaitForKeysSync(ctx context.Context, config *NodeConfig) (*admin.Administration, crypto.PrivateKey) {
 	nodeToken := crypto.TokenFromString(config.Token)
 	token, pk := crypto.RandomAsymetricKey()
-	fmt.Printf("waiting for secrete key for token %v on admin port %v with provisory token %v\n", nodeToken, config.AdminPort, token)
-	admin := &admin.Administration{
+	fmt.Printf("waiting for secrete key for token\n\n        %v\n\non admin port %v with provisory token\n\n        %v\n\n", nodeToken, config.AdminPort, token)
+	administration := &admin.Administration{
 		Firewall:       socket.ValidateSingleConnection(nodeToken),
 		Secret:         pk,
 		Port:           config.AdminPort,
@@ -22,12 +22,30 @@ func WaitForKeysSync(ctx context.Context, config *NodeConfig) (*admin.Administra
 		Activation:     make(chan admin.Activation),
 		FirewallAction: make(chan admin.FirewallAction),
 	}
-	nodeSecret, err := admin.WaitForKeys(ctx, nodeToken)
+	/*go func() {
+		time.Sleep(1 * time.Second)
+		bytes, _ := hex.DecodeString("157acd1830b2b35ea02d8f5e0745730c5dfedfc8b0d734858fcf49ca684393ecdbc43a4695df777ea27f9699fbf346b2ff259f9c90815d864a9c98b4c787cf17")
+		tokenAdrr := socket.TokenAddr{
+			Token: token,
+			Addr:  ":5403",
+		}
+		var pk crypto.PrivateKey
+		copy(pk[:], bytes)
+		admin, err := admin.DialAdmin("", tokenAdrr, pk)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		admin.SendSecret(pk)
+	}()
+	*/
+	nodeSecret, err := administration.WaitForKeys(ctx, nodeToken)
 	if err != nil {
 		slog.Info("could not get secret key for node: %v", err)
 		return nil, crypto.ZeroPrivateKey
 	}
-	return admin, nodeSecret
+
+	return administration, nodeSecret
 }
 
 /*

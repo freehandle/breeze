@@ -14,6 +14,7 @@ var usage = `Usage:
 
 The commands are:
 
+	show      show vault information
 	create    create new vault file
 	register  register trusted node on breeze network
 	remove    remove trusted node from breeze network
@@ -50,6 +51,7 @@ const (
 	withdrawCmd
 	balanceCmd
 	configCmd
+	showCmd
 )
 
 func readPassword(phrase string) []byte {
@@ -116,6 +118,8 @@ func parseCommand() byte {
 		return balanceCmd
 	case "config":
 		return configCmd
+	case "show":
+		return showCmd
 	default:
 		return noCmd
 	}

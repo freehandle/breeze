@@ -35,8 +35,7 @@ func TestSwell() {
 	relayConfig := relay.Config{
 		GatewayPort:       3030,
 		BlockListenerPort: 3031,
-		AdminPort:         3032,
-		Firewall:          relay.NewFireWall([]crypto.Token{gateway.PublicKey()}, []crypto.Token{listener.PublicKey(), candidate.PublicKey()}),
+		Firewall:          relay.NewFireWall([]crypto.Token{gateway.PublicKey()}, []crypto.Token{listener.PublicKey(), candidate.PublicKey()}, false, true),
 		Credentials:       mainserver,
 		Hostname:          "mainserver",
 	}
@@ -94,8 +93,7 @@ func TestSwell() {
 		relayConfig := relay.Config{
 			GatewayPort:       3030,
 			BlockListenerPort: 3031,
-			AdminPort:         3032,
-			Firewall:          relay.NewFireWall([]crypto.Token{gateway.PublicKey()}, []crypto.Token{}),
+			Firewall:          relay.NewFireWall([]crypto.Token{gateway.PublicKey()}, []crypto.Token{}, false, true),
 			Credentials:       candidate,
 			Hostname:          "candidate",
 		}
@@ -361,7 +359,6 @@ func TestBFT() {
 	}
 	wg.Wait()
 }
-
 func main() {
 	TestSwell()
 	/*bytes, _ := hex.DecodeString(pkHex)

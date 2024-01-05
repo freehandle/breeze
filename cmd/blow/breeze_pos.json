@@ -1,5 +1,5 @@
 {
-	"token" : "7eb7aa3582b216bba42d45e91e0a560508478f5b55228439b42733945fd5c2f5",
+	"token" : "dbc43a4695df777ea27f9699fbf346b2ff259f9c90815d864a9c98b4c787cf17",
     "address": "lienko.com",
 	"adminPort": 5403,
 	"walletPath": "",
@@ -8,8 +8,8 @@
 		"gossipPort": 5401,
 		"blocksPort": 5402,
 		"permission": {
-			"pos" : {
-				"minimumStake": 1000000
+			"poa" : {
+				"trustedNodes": ["dbc43a4695df777ea27f9699fbf346b2ff259f9c90815d864a9c98b4c787cf17"]
 			}
 		},
 		"blockInterval": 1000,
@@ -30,7 +30,7 @@
 			"maxConnections": 100,
 			"firewall": {
 				"openRelay": false,
-				"whitelist": [ "7eb7aa3582b216bba42d45e91e0a560508478f5b55228439b42733945fd5c2f5" ]
+				"whitelist": [ "dbc43a4695df777ea27f9699fbf346b2ff259f9c90815d864a9c98b4c787cf17" ]
 			}
 		},
 		"blockStorage": {
@@ -46,7 +46,7 @@
 	"genesis": {
 		"wallets": [
 			{
-				"token": "7eb7aa3582b216bba42d45e91e0a560508478f5b55228439b42733945fd5c2f5",
+				"token": "dbc43a4695df777ea27f9699fbf346b2ff259f9c90815d864a9c98b4c787cf17",
 				"wallet": 999000000,
 				"deposit": 1000000
 			}

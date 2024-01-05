@@ -212,7 +212,9 @@ func (w *Window) IsPoolMember(epoch uint64) bool {
 	windowStart := int(w.Start)
 	leader := int(epoch-uint64(windowStart)) % len(w.Committee.order)
 	for n := 0; n < w.Node.config.MaxCommitteeSize; n++ {
-		if token.Equal(w.Committee.order[(leader+n)%len(w.Committee.order)]) {
+		// n-th cirular token given order
+		nth := w.Committee.order[(leader+n)%len(w.Committee.order)]
+		if token.Equal(nth) {
 			return true
 		}
 	}

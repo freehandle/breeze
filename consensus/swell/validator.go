@@ -1,7 +1,6 @@
 package swell
 
 import (
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -267,10 +266,8 @@ func (w *Window) BuildBlock(epoch uint64, pool *bft.Pooling) bool {
 		w.AddSealedBlock(sealed)
 		return true
 	} else if consensus.Value.Equal(crypto.ZeroHash) {
-		fmt.Println("deu ruim")
 		return false
 	}
-	fmt.Println("deu ruim 2")
 	return false
 }
 

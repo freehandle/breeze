@@ -30,6 +30,7 @@ const (
 	EphemeralKey
 	DiffieHellman
 	FirewallInstruction
+	ActivityInstruction
 	InvalidKey
 	StatusOk
 	StatusErr
@@ -90,6 +91,7 @@ func (a *Administration) WaitForKeys(ctx context.Context, token crypto.Token) (c
 	}
 	pk := <-a.diffieHellman
 	if pk.PublicKey().Equal(token) {
+		a.Secret = pk
 		return pk, nil
 	}
 	return crypto.ZeroPrivateKey, errors.New("could not retrieve valid secret key")
@@ -101,9 +103,7 @@ func (a *Administration) RunServer(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-
 	withcancel, cancel := context.WithCancel(ctx)
-
 	go func() {
 		for {
 			conn, err := listener.Accept()
@@ -114,7 +114,7 @@ func (a *Administration) RunServer(ctx context.Context) error {
 			}
 			trusted, err := socket.PromoteConnection(conn, a.Secret, a.Firewall)
 			if err != nil {
-				slog.Info("admin connection rejected: %v", err)
+				slog.Info("admin connection rejected", "error", err, "token", a.Secret.PublicKey())
 				continue
 			}
 			go a.Panel(trusted)
@@ -204,6 +204,22 @@ func (a *Administration) Panel(conn *socket.SignedConnection) {
 			action := ParseFirewallActionMessage(data)
 			if action.Scope != InvalidScope {
 				a.FirewallAction <- action
+			} else {
+				conn.Send([]byte{StatusErr})
+			}
+		case ActivityInstruction:
+			if len(data) < 2 {
+				conn.Send([]byte{StatusErr})
+				continue
+			}
+			response := make(chan bool)
+			a.Activation <- Activation{
+				Active:   data[1] == 1,
+				Response: response,
+			}
+			ok := <-response
+			if ok {
+				conn.Send([]byte{StatusOk})
 			} else {
 				conn.Send([]byte{StatusErr})
 			}

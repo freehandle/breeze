@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/freehandle/breeze/consensus/permission"
@@ -28,6 +30,18 @@ func main() {
 		fmt.Println(err)
 		os.Exit(1)
 	}
+	log := filepath.Join(config.LogPath, fmt.Sprintf("%v.log", config.Token[0:16]))
+
+	logFile, err := os.OpenFile(log, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Printf("could not open log file: %v\n", err)
+		os.Exit(1)
+	}
+	var programLevel = new(slog.LevelVar) // Info by default
+	programLevel.Set(slog.LevelDebug)
+	logger := slog.NewTextHandler(logFile, &slog.HandlerOptions{Level: programLevel})
+	slog.SetDefault(slog.New(logger))
+
 	swellConfig := SwellConfigFromConfig(config)
 	relay, err := RelayFromConfig(ctx, config, crypto.ZeroPrivateKey)
 	if err != nil {
@@ -35,12 +49,23 @@ func main() {
 		os.Exit(1)
 	}
 	if os.Args[2] == "genesis" {
+		fmt.Println("creating genesis node")
 		admin, pk := WaitForKeysSync(ctx, config)
 		if admin == nil {
 			fmt.Println("canceled")
 			os.Exit(1)
 		}
-		err = CreateNodeFromGenesis(ctx, config, pk)
+
+		validatorConfig := swell.ValidatorConfig{
+			Credentials:    pk,
+			WalletPath:     config.WalletPath,
+			SwellConfig:    swellConfig,
+			Relay:          relay,
+			Admin:          admin,
+			TrustedGateway: TokenAddrArrayFromPeeers(config.TrustedNodes),
+		}
+		swell.NewGenesisNode(ctx, pk, validatorConfig)
+		return
 	} else if len(os.Args) < 5 {
 		fmt.Println(usage)
 		os.Exit(1)
@@ -123,13 +148,14 @@ func RelayFromConfig(ctx context.Context, config *NodeConfig, pk crypto.PrivateK
 
 func SwellConfigFromConfig(config *NodeConfig) swell.SwellNetworkConfiguration {
 	swell := swell.SwellNetworkConfiguration{
-		NetworkHash:    crypto.Hasher([]byte(config.Genesis.NetworkID)),
-		MaxPoolSize:    config.Breeze.ChecksumCommitteeSize,
-		BlockInterval:  time.Duration(config.Breeze.BlockInterval) * time.Millisecond,
-		ChecksumWindow: config.Breeze.ChecksumWindowBlocks,
+		NetworkHash:      crypto.Hasher([]byte(config.Genesis.NetworkID)),
+		MaxPoolSize:      config.Breeze.Swell.CommitteeSize,
+		MaxCommitteeSize: config.Breeze.ChecksumCommitteeSize,
+		BlockInterval:    time.Duration(config.Breeze.BlockInterval) * time.Millisecond,
+		ChecksumWindow:   config.Breeze.ChecksumWindowBlocks,
 	}
 	if poa := config.Breeze.Permission.POA; poa != nil {
-		tokens := make([]crypto.Token, len(poa.TrustedNodes))
+		tokens := make([]crypto.Token, 0)
 		for _, trusted := range poa.TrustedNodes {
 			var token crypto.Token
 			token = crypto.TokenFromString(trusted)

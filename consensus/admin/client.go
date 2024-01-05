@@ -68,3 +68,36 @@ func (a *AdminClient) SendSecret(key crypto.PrivateKey) error {
 	}
 	return nil
 }
+
+func (a *AdminClient) FirewallAction(scope byte, token crypto.Token) error {
+	msg := FirewallActionMessage(scope, token)
+	if err := a.conn.Send(msg); err != nil {
+		return err
+	}
+	data, err := a.conn.Read()
+	if err != nil {
+		return err
+	}
+	if len(data) < 1 || data[0] != StatusOk {
+		return errors.New("firewall action rejected")
+	}
+	return nil
+}
+
+func (a *AdminClient) Activity(candidate bool) error {
+	msg := []byte{ActivityInstruction, 0}
+	if candidate {
+		msg[1] = 1
+	}
+	if err := a.conn.Send(msg); err != nil {
+		return err
+	}
+	data, err := a.conn.Read()
+	if err != nil {
+		return err
+	}
+	if len(data) < 1 || data[0] != StatusOk {
+		return errors.New("activity action rejected")
+	}
+	return nil
+}

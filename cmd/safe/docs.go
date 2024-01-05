@@ -2,6 +2,11 @@ package main
 
 import "fmt"
 
+const helpShow = `usage: safe <path-tovault-file> show
+
+Show information about the vault file.
+`
+
 const helpCreate = `usage: safe <path-tovault-file> create
 
 Create a new secure vault with a random crypto key. The vault will be encrypted
@@ -36,7 +41,7 @@ key on the secure vault file. The public key is printed to the standard output.
 
 `
 
-const helpSync = `usage: safe <path-tovault-file> sync <node-id>
+const helpSync = `usage: safe <path-tovault-file> sync <node-address> <node-temp-token> <token-to-be-sync>
 
 Will connect to trusted node and ask for the secrets keys the node is expecting
 to receive. The trusted node will only accept the connection if the token 
@@ -72,7 +77,7 @@ associated to the secret key of the vault is configured with admin rights on the
 trusted node.
 `
 
-const helpTransfer = `usage: safe <path-tovault-file> transfer <token-amount> <from-account> <to-account>
+const helpTransfer = `usage: safe <path-tovault-file> transfer <from-account> <to-account> <ammount> <fee> 
 
 Will instruct node to transfer token-amount of funds from from-account to to-account.
 `
