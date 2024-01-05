@@ -156,7 +156,7 @@ func (w *Window) RunEpoch(epoch uint64) {
 		Members: make(map[crypto.Token]bft.PoolingMembers),
 		Order:   make([]crypto.Token, 0),
 	}
-	peers := make([]socket.CommitteeMember, 0)
+	peers := make([]socket.TokenAddr, 0)
 	for i := 0; i < w.Node.config.MaxPoolSize; i++ {
 		token := w.Committee.order[(leaderCount+i)%len(w.Committee.order)]
 		weight := w.Committee.weights[token]

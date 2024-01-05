@@ -7,7 +7,13 @@ import (
 
 	"github.com/freehandle/breeze/consensus/chain"
 	"github.com/freehandle/breeze/crypto"
+	"github.com/freehandle/breeze/socket"
 )
+
+type WindowWithValidators struct {
+	window     *Window
+	validators []socket.TokenAddr
+}
 
 // Window is a given sequence of blocks from Start to End under responsability of
 // the Committee to produce blocks for the SwellNode instance
@@ -21,6 +27,7 @@ type Window struct {
 	unpublished     []*chain.ChecksumStatement
 	published       []*chain.ChecksumStatement
 	hasPreparedNext bool
+	nextListener    chan *WindowWithValidators
 	nextCommittee   *Committee
 	ctx             context.Context
 }
@@ -126,16 +133,26 @@ func (w *Window) PrepareNewWindow() {
 			break
 		}
 	}
-	validators := make(Validators, 0)
+	validators := make([]socket.TokenAddr, 0)
 	for _, token := range candidates {
 		for _, statement := range w.published {
 			if statement.Naked && statement.Node.Equal(token) {
-				validators = append(validators, &Validator{
-					Address: statement.Address,
-					Token:   token,
+				validators = append(validators, socket.TokenAddr{
+					Addr:  statement.Address,
+					Token: token,
 				})
 			}
 		}
+	}
+
+	// if there is a listener (like in a standby node) send the new window
+	// and return
+	if w.nextListener != nil {
+		w.nextListener <- &WindowWithValidators{
+			window:     next,
+			validators: validators,
+		}
+		return
 	}
 
 	// launch committee

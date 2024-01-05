@@ -10,12 +10,12 @@ import (
 	"github.com/freehandle/breeze/util"
 )
 
-type Validator struct {
+/*type Validator struct {
 	Address string
 	Token   crypto.Token
-}
+}*/
 
-type Validators []*Validator
+//type Validators []socket.TokenAddr
 
 type TokenHash struct {
 	Token crypto.Token
@@ -50,7 +50,7 @@ type Committee struct {
 	weights     map[crypto.Token]int
 	consensus   []*socket.ChannelConnection
 	blocks      *socket.PercolationPool
-	validators  []socket.CommitteeMember
+	validators  []socket.TokenAddr
 }
 
 func (c *Committee) Serialize() []byte {
@@ -62,17 +62,17 @@ func (c *Committee) Serialize() []byte {
 	util.PutUint16(uint16(len(c.validators)), &bytes)
 	for n := 0; n < len(c.validators); n++ {
 		util.PutToken(c.validators[n].Token, &bytes)
-		util.PutString(c.validators[n].Address, &bytes)
+		util.PutString(c.validators[n].Addr, &bytes)
 	}
 	return bytes
 }
 
-func ParseCommitee(bytes []byte) ([]crypto.Token, []socket.CommitteeMember) {
+func ParseCommitee(bytes []byte) ([]crypto.Token, []socket.TokenAddr) {
 	if len(bytes) < 1 || bytes[0] != messages.MsgNetworkTopologyResponse {
 		return nil, nil
 	}
 	order := make([]crypto.Token, 0)
-	validators := make([]socket.CommitteeMember, 0)
+	validators := make([]socket.TokenAddr, 0)
 	var orderCount, validatorCount uint16
 	position := 1
 	orderCount, position = util.ParseUint16(bytes, 1)
@@ -86,9 +86,9 @@ func ParseCommitee(bytes []byte) ([]crypto.Token, []socket.CommitteeMember) {
 	}
 	validatorCount, position = util.ParseUint16(bytes, position)
 	for n := uint16(0); n < validatorCount; n++ {
-		member := socket.CommitteeMember{}
+		member := socket.TokenAddr{}
 		member.Token, position = util.ParseToken(bytes, position)
-		member.Address, position = util.ParseString(bytes, position)
+		member.Addr, position = util.ParseString(bytes, position)
 		validators = append(validators, member)
 	}
 	if position != len(bytes) {
@@ -108,7 +108,7 @@ func SingleCommittee(credentials crypto.PrivateKey, hostname string) *Committee 
 		weights:     map[crypto.Token]int{credentials.PublicKey(): 1},
 		consensus:   make([]*socket.ChannelConnection, 0),
 		blocks:      socket.AssembleOwnPercolationPool(),
-		validators:  []socket.CommitteeMember{{Token: credentials.PublicKey()}},
+		validators:  []socket.TokenAddr{{Token: credentials.PublicKey()}},
 	}
 }
 
@@ -141,7 +141,7 @@ func sortCandidates(candidates map[crypto.Token]int, seed []byte, committeeSize 
 	return ordered
 }
 
-func LaunchValidatorPool(ctx context.Context, validators Validators, credentials crypto.PrivateKey, hostname string) *Committee {
+func LaunchValidatorPool(ctx context.Context, validators []socket.TokenAddr, credentials crypto.PrivateKey, hostname string) *Committee {
 	ctx, cancel := context.WithCancel(ctx)
 	pool := &Committee{
 		ctx:         ctx,
@@ -152,7 +152,7 @@ func LaunchValidatorPool(ctx context.Context, validators Validators, credentials
 	return pool.PrepareNext(validators)
 }
 
-func (v *Committee) PrepareNext(validators Validators) *Committee {
+func (v *Committee) PrepareNext(validators []socket.TokenAddr) *Committee {
 	ctx, cancel := context.WithCancel(v.ctx)
 	pool := &Committee{
 		ctx:         ctx,
@@ -161,26 +161,26 @@ func (v *Committee) PrepareNext(validators Validators) *Committee {
 		credentials: v.credentials,
 		order:       make([]crypto.Token, 0),
 		weights:     make(map[crypto.Token]int),
-		validators:  make([]socket.CommitteeMember, 0),
+		validators:  make([]socket.TokenAddr, 0),
 	}
 
 	token := v.credentials.PublicKey()
-	peers := make([]socket.CommitteeMember, 0)
+	peers := make([]socket.TokenAddr, 0)
 
 	for _, validator := range validators {
 		if weight, ok := pool.weights[validator.Token]; ok {
 			pool.weights[validator.Token] = weight + 1
 		} else {
 			pool.weights[validator.Token] = 1
-			member := socket.CommitteeMember{
-				Address: validator.Address,
-				Token:   validator.Token,
+			member := socket.TokenAddr{
+				Addr:  validator.Addr,
+				Token: validator.Token,
 			}
 			pool.validators = append(pool.validators, member)
 			if !validator.Token.Equal(token) {
-				peers = append(peers, socket.CommitteeMember{
-					Address: validator.Address,
-					Token:   validator.Token,
+				peers = append(peers, socket.TokenAddr{
+					Addr:  validator.Addr,
+					Token: validator.Token,
 				})
 			}
 		}

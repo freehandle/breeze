@@ -11,7 +11,7 @@ import (
 	"github.com/freehandle/breeze/socket"
 )
 
-type Blocks struct {
+type BlockListener struct {
 	Credentials     crypto.PrivateKey
 	LastCommitEpoch uint64
 	SealedBlocks    []*chain.SealedBlock
@@ -25,7 +25,7 @@ type Blocks struct {
 
 // Incorporate adds data to the block buffer. The data should be a message
 // of type MsgSealedBlock, MsgCommittedBlock or MsgCommit.
-func (b *Blocks) Incorporate(data []byte) {
+func (b *BlockListener) Incorporate(data []byte) {
 	if len(data) == 0 {
 		slog.Warn("blocks.Incorporate: empty data received")
 		return
@@ -73,7 +73,7 @@ func (b *Blocks) Incorporate(data []byte) {
 	}
 }
 
-func (b *Blocks) incorporateStatemnet(statement *chain.ChecksumStatement) {
+func (b *BlockListener) incorporateStatemnet(statement *chain.ChecksumStatement) {
 	if statement == nil {
 		return
 	}
@@ -99,8 +99,8 @@ func (b *Blocks) incorporateStatemnet(statement *chain.ChecksumStatement) {
 	b.Statements = append(b.Statements, statement)
 }
 
-func NewBlocks(ctx context.Context, hostname string, credentials crypto.PrivateKey, provider socket.TokenAddr) *Blocks {
-	blocks := &Blocks{
+func NewBlocks(ctx context.Context, hostname string, credentials crypto.PrivateKey, provider socket.TokenAddr) *BlockListener {
+	blocks := &BlockListener{
 		Credentials:  credentials,
 		SealedBlocks: []*chain.SealedBlock{},
 		RecentBLocks: []*chain.CommitBlock{},

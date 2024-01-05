@@ -14,10 +14,10 @@ func TestBuildCommittee(t *testing.T) {
 	secondToken, secondPK := crypto.RandomAsymetricKey()
 	thirdToken, thirdPK := crypto.RandomAsymetricKey()
 
-	peers := []CommitteeMember{
-		{Address: "localhost:3500", Token: firstToken},
-		{Address: "localhost:3501", Token: secondToken},
-		{Address: "localhost:3502", Token: thirdToken},
+	peers := []TokenAddr{
+		{Addr: "localhost:3500", Token: firstToken},
+		{Addr: "localhost:3501", Token: secondToken},
+		{Addr: "localhost:3502", Token: thirdToken},
 	}
 
 	credentials := []crypto.PrivateKey{firstPK, secondPK, thirdPK}

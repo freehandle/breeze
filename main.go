@@ -120,7 +120,7 @@ func TestSwell() {
 			Relay:    relayNode,
 			Hostname: "candidate",
 		}
-		err = swell.FullSyncValidatorNode(ctx, config, provider)
+		err = swell.FullSyncValidatorNode(ctx, config, provider, nil)
 		if err != nil {
 			fmt.Println(err)
 		}
@@ -227,9 +227,9 @@ func TestGossip() {
 	first := make(chan []*socket.ChannelConnection)
 	second := make(chan []*socket.ChannelConnection)
 
-	peers := []socket.CommitteeMember{
-		{Address: "first", Token: firstToken},
-		{Address: "second", Token: secondToken},
+	peers := []socket.TokenAddr{
+		{Addr: "first", Token: firstToken},
+		{Addr: "second", Token: secondToken},
 	}
 
 	go func() {
@@ -280,12 +280,12 @@ func BuildChannelNetwork(pk []crypto.PrivateKey) [][]*socket.ChannelConnection {
 	tokens := make([]crypto.Token, count)
 	secrets := make([]crypto.PrivateKey, count)
 	chanConn := make([][]*socket.ChannelConnection, count)
-	peers := make([]socket.CommitteeMember, count)
+	peers := make([]socket.TokenAddr, count)
 	for n := 0; n < count; n++ {
 		tokens[n] = pk[n].PublicKey()
 		secrets[n] = pk[n]
 		socket.TCPNetworkTest.AddNode(fmt.Sprintf("n%v", n), 1, 50*time.Millisecond, 1e9)
-		peers[n] = socket.CommitteeMember{Address: fmt.Sprintf("n%v", n), Token: tokens[n]}
+		peers[n] = socket.TokenAddr{Addr: fmt.Sprintf("n%v", n), Token: tokens[n]}
 	}
 
 	wg := sync.WaitGroup{}

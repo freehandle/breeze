@@ -74,18 +74,18 @@ func AssembleOwnPercolationPool() *PercolationPool {
 
 // AssemblePercolationPool creates a pool of connections to other nodes in the
 // peer group. It uses live connection over an existing pool if provided.
-func AssemblePercolationPool(ctx context.Context, peers []CommitteeMember, credentials crypto.PrivateKey, port int, hostname string, rule PercolationRule, existing *PercolationPool) *PercolationPool {
+func AssemblePercolationPool(ctx context.Context, peers []TokenAddr, credentials crypto.PrivateKey, port int, hostname string, rule PercolationRule, existing *PercolationPool) *PercolationPool {
 	token := credentials.PublicKey()
 	pool := PercolationPool{
 		connections: make([]*BufferedMultiChannel, len(peers)),
 		rule:        rule,
 	}
-	members := make([]CommitteeMember, 0)
+	members := make([]TokenAddr, 0)
 	for _, peer := range peers {
 		if !peer.Token.Equal(token) {
-			members = append(members, CommitteeMember{
-				Address: fmt.Sprintf("%v:%v", peer.Address, port),
-				Token:   peer.Token,
+			members = append(members, TokenAddr{
+				Addr:  fmt.Sprintf("%v:%v", peer.Addr, port),
+				Token: peer.Token,
 			})
 		}
 	}

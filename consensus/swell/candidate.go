@@ -13,11 +13,11 @@ import (
 
 const CandidateMsg byte = 200
 
-func ConnectRandomValidator(hostname string, credentials crypto.PrivateKey, validators Validators) *socket.SignedConnection {
+func ConnectRandomValidator(hostname string, credentials crypto.PrivateKey, validators []socket.TokenAddr) *socket.SignedConnection {
 	value := rand.Intn(len(validators))
 	for n := 0; n < len(validators); n++ {
 		selected := validators[(n+value)%len(validators)]
-		conn, err := socket.Dial(hostname, selected.Address, credentials, selected.Token)
+		conn, err := socket.Dial(hostname, selected.Addr, credentials, selected.Token)
 		if err == nil {
 			return conn
 		}
@@ -82,13 +82,18 @@ func RunNonValidatorNode(w *Window, conn *socket.SignedConnection, candidate boo
 	}()
 }
 
+type ReaderShutdowner interface {
+	Read() ([]byte, error)
+	Shutdown()
+}
+
 // ReadMessages reads block event from the provided connection and returns a
 // channel for new sealed blocks derived from those events. The go-routine
 // terminates either by the context, if there is an error on the connection or
 // if it receives a MsgSyncError message (which is uses by the validator on the
 // other side of the connection to tell that it is not capable of providing the
 // requested information).
-func ReadMessages(cancel context.CancelFunc, conn *socket.SignedConnection) chan *chain.SealedBlock {
+func ReadMessages(cancel context.CancelFunc, conn ReaderShutdowner) chan *chain.SealedBlock {
 	newSealed := make(chan *chain.SealedBlock)
 	go func() {
 		for {

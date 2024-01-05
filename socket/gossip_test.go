@@ -20,9 +20,9 @@ func TestBuildGossip(t *testing.T) {
 	firstToken, firstPK := crypto.RandomAsymetricKey()
 	secondToken, secondPK := crypto.RandomAsymetricKey()
 
-	peers := []CommitteeMember{
-		{Address: "first", Token: firstToken},
-		{Address: "second", Token: secondToken},
+	peers := []TokenAddr{
+		{Addr: "first", Token: firstToken},
+		{Addr: "second", Token: secondToken},
 	}
 
 	go func() {

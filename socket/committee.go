@@ -16,17 +16,17 @@ var CommitteeRetryDelay = time.Second // should wait for this period before retr
 
 // CommitteeMember is a node in the committee. Address should be reachable and
 // a signed connecition for the given token should be possible.
-type CommitteeMember struct {
-	Address string
-	Token   crypto.Token
-}
+//type CommitteeMember struct {
+//	Address string
+//	Token   crypto.Token
+//}
 
 // committeePool keeps track of the nodes already connected and those that are
 // still remaining.
 type committeePool[T TokenComparer] struct {
 	mu        *sync.Mutex
 	connected []T
-	remaining []CommitteeMember
+	remaining []TokenAddr
 	token     crypto.Token
 }
 
@@ -82,11 +82,11 @@ func isMember[T TokenComparer](token crypto.Token, pool *committeePool[T]) bool 
 // field with all existig connections declared in the peer froup and populate
 // the remaining field with all the peers that are not connected.
 // NewT is a function that creates a new T object from a signed connection.
-func newPool[T TokenComparer](peers []CommitteeMember, connected []T, token crypto.Token, NewT func(conn *SignedConnection) T) *committeePool[T] {
+func newPool[T TokenComparer](peers []TokenAddr, connected []T, token crypto.Token, NewT func(conn *SignedConnection) T) *committeePool[T] {
 	pool := &committeePool[T]{
 		mu:        &sync.Mutex{},
 		connected: make([]T, 0),
-		remaining: make([]CommitteeMember, 0),
+		remaining: make([]TokenAddr, 0),
 		token:     token,
 	}
 	for _, peer := range peers {
@@ -118,7 +118,7 @@ func newPool[T TokenComparer](peers []CommitteeMember, connected []T, token cryp
 // port to listen on for new connections (other nodes will try to assemble the
 // pool at the same time). hostname is "localhost" or "" for internet connections
 // anything else for testing.
-func AssembleCommittee[T TokenComparer](ctx context.Context, peers []CommitteeMember, connected []T, NewT func(*SignedConnection) T, credentials crypto.PrivateKey, port int, hostname string) chan []T {
+func AssembleCommittee[T TokenComparer](ctx context.Context, peers []TokenAddr, connected []T, NewT func(*SignedConnection) T, credentials crypto.PrivateKey, port int, hostname string) chan []T {
 	done := make(chan []T, 2)
 	pool := newPool(peers, connected, credentials.PublicKey(), NewT)
 	if len(pool.remaining) == 0 {
@@ -151,7 +151,7 @@ func AssembleCommittee[T TokenComparer](ctx context.Context, peers []CommitteeMe
 					time.Sleep(500 * time.Millisecond)
 				}
 				slog.Info("BuilderCommittee: could not connect to peer", "address", address, "hostname", hostname)
-			}(peer.Address, peer.Token)
+			}(peer.Addr, peer.Token)
 		}
 	}
 

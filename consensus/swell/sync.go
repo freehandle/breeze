@@ -16,8 +16,10 @@ import (
 
 // FullSyncValidatorNode tries to gather information from a given validator to
 // form a new non-validating node. This is used to bootstrap a new node from
-// scratch.
-func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync socket.TokenAddr) error {
+// scratch. A standy node just keep in sync with the network and cannot be a
+// candidate to participate in consensus. Standby nodes have no relay and no
+// admin interface.
+func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync socket.TokenAddr, standby chan StandByNode) error {
 
 	conn, err := socket.Dial(config.Hostname, sync.Addr, config.Credentials, sync.Token)
 	if err != nil {
@@ -83,8 +85,6 @@ func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync soc
 		admin:       config.Admin,
 		hostname:    config.Hostname,
 	}
-	go node.ServeAdmin(ctx)
-	RunActionsGateway(ctx, config.Relay.ActionGateway, node.actions)
 	windowDuration := uint64(config.SwellConfig.ChecksumWindow)
 	windowStart := windowDuration*(checksum.Epoch/windowDuration) + 1
 	window := Window{
@@ -97,7 +97,13 @@ func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync soc
 		unpublished: make([]*chain.ChecksumStatement, 0),
 		published:   make([]*chain.ChecksumStatement, 0),
 	}
-	RunNonValidatorNode(&window, conn, true)
+	if standby == nil {
+		go node.ServeAdmin(ctx)
+		RunActionsGateway(ctx, config.Relay.ActionGateway, node.actions)
+		RunNonValidatorNode(&window, conn, true)
+	} else {
+		standby <- *RunReplicaNode(&window, conn)
+	}
 	return nil
 }
 

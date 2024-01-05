@@ -91,7 +91,7 @@ func main() {
 			fmt.Println("canceled")
 			os.Exit(1)
 		}
-		err = swell.FullSyncValidatorNode(ctx, validatorConfig, socket.TokenAddr{})
+		err = swell.FullSyncValidatorNode(ctx, validatorConfig, socket.TokenAddr{}, nil)
 	}
 	fmt.Printf("blow node terminated: %v\n", err)
 }

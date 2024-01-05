@@ -34,7 +34,47 @@ func (b *DataQueue[T]) Push(data T) {
 	}
 }
 
-func NewDataQueue[T any](ctx context.Context, hash func(T) crypto.Hash) *DataQueue[T] {
+func NewSimpleDataQuerue[T any](ctx context.Context) *DataQueue[T] {
+	dataQueue := &DataQueue[T]{
+		live:  true,
+		next:  make(chan struct{}),
+		read:  make(chan T),
+		write: make(chan T),
+	}
+	go func() {
+		defer func() {
+			dataQueue.live = false
+			close(dataQueue.read)
+			close(dataQueue.next)
+		}()
+		buffer := make([]T, 0)
+		waiting := false
+		done := ctx.Done()
+		for {
+			select {
+			case <-done:
+				close(dataQueue.write)
+			case data, ok := <-dataQueue.write:
+				if !ok {
+					return
+				}
+				if waiting {
+					dataQueue.read <- data
+					waiting = false
+				} else {
+					buffer = append(buffer, data)
+				}
+			case <-dataQueue.next:
+				if len(buffer) == 0 {
+					waiting = true
+				}
+			}
+		}
+	}()
+	return dataQueue
+}
+
+func NewDataQueueWithHashFunc[T any](ctx context.Context, hash func(T) crypto.Hash) *DataQueue[T] {
 	hashes := make(map[crypto.Hash]struct{})
 	dataQueue := &DataQueue[T]{
 		live:  true,

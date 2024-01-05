@@ -2,6 +2,7 @@
 package socket
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -51,7 +52,21 @@ func Dial(hostname, address string, credentials crypto.PrivateKey, token crypto.
 		return nil, err
 	}
 	return performClientHandShake(conn, credentials, token)
+}
 
+func DialCtx(ctx context.Context, hostname, address string, credentials crypto.PrivateKey, token crypto.Token) (*SignedConnection, error) {
+	var conn net.Conn
+	var err error
+	if hostname == "" || hostname == "localhost" {
+		var d net.Dialer
+		conn, err = d.DialContext(ctx, "tcp", address)
+	} else {
+		conn, err = TCPNetworkTest.Dial(hostname, address)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return performClientHandShake(conn, credentials, token)
 }
 
 // Listen returns a net.Listener. If addres is "localhost:port" or ":port" it
@@ -74,9 +89,10 @@ func Listen(address string) (net.Listener, error) {
 // Reader, Sender, Closer interface providing a simple interface to send and
 // receive signed messages.
 type SignedConnection struct {
-	Token crypto.Token
-	key   crypto.PrivateKey
-	conn  net.Conn
+	Token   crypto.Token
+	Address string
+	key     crypto.PrivateKey
+	conn    net.Conn
 }
 
 // Send up to 1<<32 - 1 bytes of data. It returns an error if the message is

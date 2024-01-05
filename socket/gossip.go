@@ -287,12 +287,12 @@ func GroupGossip(epoch uint64, connections []*ChannelConnection) *Gossip {
 // AssembleChannelNetwork assembles a committee of ChannelConnections. It returns
 // a channel for the slice of connections. The channel will be populated with all
 // the connections that were possible to establish.
-func AssembleChannelNetwork(ctx context.Context, peers []CommitteeMember, credentials crypto.PrivateKey, port int, hostname string, existing []*ChannelConnection) []*ChannelConnection {
-	peersMembers := make([]CommitteeMember, len(peers))
+func AssembleChannelNetwork(ctx context.Context, peers []TokenAddr, credentials crypto.PrivateKey, port int, hostname string, existing []*ChannelConnection) []*ChannelConnection {
+	peersMembers := make([]TokenAddr, len(peers))
 	for n, peer := range peers {
-		peersMembers[n] = CommitteeMember{
-			Address: fmt.Sprintf("%v:%v", peer.Address, port),
-			Token:   peer.Token,
+		peersMembers[n] = TokenAddr{
+			Addr:  fmt.Sprintf("%v:%v", peer.Addr, port),
+			Token: peer.Token,
 		}
 	}
 	committee := AssembleCommittee[*ChannelConnection](ctx, peersMembers, existing, NewChannelConnection, credentials, port, hostname)
