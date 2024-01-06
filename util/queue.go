@@ -34,7 +34,7 @@ func (b *DataQueue[T]) Push(data T) {
 	}
 }
 
-func NewSimpleDataQuerue[T any](ctx context.Context) *DataQueue[T] {
+func NewSimpleDataQueue[T any](ctx context.Context) *DataQueue[T] {
 	dataQueue := &DataQueue[T]{
 		live:  true,
 		next:  make(chan struct{}),

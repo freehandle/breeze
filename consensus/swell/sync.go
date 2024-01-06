@@ -19,7 +19,7 @@ import (
 // scratch. A standy node just keep in sync with the network and cannot be a
 // candidate to participate in consensus. Standby nodes have no relay and no
 // admin interface.
-func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync socket.TokenAddr, standby chan StandByNode) error {
+func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync socket.TokenAddr, standby chan *StandByNode) error {
 
 	conn, err := socket.Dial(config.Hostname, sync.Addr, config.Credentials, sync.Token)
 	if err != nil {
@@ -102,7 +102,7 @@ func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync soc
 		RunActionsGateway(ctx, config.Relay.ActionGateway, node.actions)
 		RunNonValidatorNode(&window, conn, true)
 	} else {
-		standby <- *RunReplicaNode(&window, conn)
+		standby <- RunReplicaNode(&window, conn)
 	}
 	return nil
 }

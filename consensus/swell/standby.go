@@ -11,9 +11,9 @@ import (
 
 type StandByNode struct {
 	hostname   string
-	blockchain *chain.Blockchain
+	Blockchain *chain.Blockchain
 	connPool   *socket.Aggregator
-	LastEvents *util.DataQueue[uint64]
+	LastEvents *util.Await
 }
 
 type WindowWithWorker struct {
@@ -39,9 +39,9 @@ func RunReplicaNode(w *Window, conn *socket.SignedConnection) *StandByNode {
 	}
 	node := &StandByNode{
 		hostname:   w.Node.hostname,
-		blockchain: w.Node.blockchain,
+		Blockchain: w.Node.blockchain,
 		connPool:   pool,
-		LastEvents: util.NewSimpleDataQueue[uint64](w.ctx),
+		LastEvents: util.NewAwait(w.ctx),
 	}
 
 	nextWindow := make(chan *WindowWithValidators)
@@ -61,11 +61,11 @@ func RunReplicaNode(w *Window, conn *socket.SignedConnection) *StandByNode {
 	}
 
 	go func() {
+		defer pool.Shutdown()
 		canceled := w.ctx.Done()
 		for {
 			select {
 			case <-canceled:
-				conn.Shutdown()
 				slog.Info("RunReplicaNode: service terminated by context")
 				return
 			case next := <-nextWindow:
@@ -82,7 +82,10 @@ func RunReplicaNode(w *Window, conn *socket.SignedConnection) *StandByNode {
 				slog.Info("RunReplicaNode: new window received", "start", next.window.Start, "end", next.window.End)
 			case sealed := <-newSealed:
 				epoch := sealed.Header.Epoch
-				node.LastEvents.Push(epoch)
+				if !node.LastEvents.Call() {
+					slog.Warn("RunReplicaNode: Await is closed.")
+					return
+				}
 				found := false
 				for _, window := range activeWindows {
 					if epoch >= window.window.Start && epoch <= window.window.End {

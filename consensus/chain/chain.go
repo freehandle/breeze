@@ -163,6 +163,18 @@ func BlockchainFromChecksumState(c *Checksum, clock ClockSyncronization, credent
 	return blockchain
 }
 
+func (c *Blockchain) RecentAfter(epoch uint64) []*CommitBlock {
+	recent := make([]*CommitBlock, 0)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, block := range c.RecentBlocks {
+		if block.Header.Epoch > epoch {
+			recent = append(recent, block)
+		}
+	}
+	return recent
+}
+
 // NextBlock returns a block header for the next block to be proposed. It
 // retrieves the checkpoint from the last commit state.
 func (c *Blockchain) NextBlock(epoch uint64) *BlockHeader {
