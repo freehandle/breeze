@@ -10,22 +10,32 @@ import (
 	"github.com/freehandle/breeze/util"
 )
 
-const ItemsPerBucket = 8
+/*const ItemsPerBucket = 8
 const BitsForBucket = 20
+const IndexSize = 8
+*/
 
-func NewBlockchainHistory(path string, iindex bool) (*BlockchainHistory, error) {
-	blockstore, err := NewBlockStore(path)
+type DBConfig struct {
+	Path           string
+	Indexed        bool
+	ItemsPerBucket int
+	BitsForBucket  int
+	IndexSize      int
+}
+
+func NewBlockchainHistory(config DBConfig) (*BlockchainHistory, error) {
+	blockstore, err := NewBlockStore(config.Path)
 	if err != nil {
 		return nil, err
 	}
-	if !iindex {
+	if !config.Indexed {
 		return &BlockchainHistory{
 			Storage: blockstore,
 		}, nil
 
 	}
-	indexPath := filepath.Join(path, "block_index")
-	indx, err := index.NewIndex(indexPath, BitsForBucket, ItemsPerBucket)
+	indexPath := filepath.Join(config.Path, "block_index")
+	indx, err := index.NewIndex(indexPath, int64(config.BitsForBucket), int64(config.ItemsPerBucket), int64(config.IndexSize))
 	if err != nil {
 		return nil, err
 	}
@@ -35,18 +45,18 @@ func NewBlockchainHistory(path string, iindex bool) (*BlockchainHistory, error) 
 	}, nil
 }
 
-func OpenBlockchainHistory(path string, indexed bool) (*BlockchainHistory, error) {
-	blockstore, err := OpenBlockStore(path)
+func OpenBlockchainHistory(config DBConfig) (*BlockchainHistory, error) {
+	blockstore, err := OpenBlockStore(config.Path)
 	if err != nil {
 		return nil, err
 	}
-	if !indexed {
+	if !config.Indexed {
 		return &BlockchainHistory{
 			Storage: blockstore,
 		}, nil
 	}
-	indexPath := filepath.Join(path, "block_index")
-	indx, err := index.OpenIndex(indexPath, BitsForBucket, ItemsPerBucket)
+	indexPath := filepath.Join(config.Path, "block_index")
+	indx, err := index.OpenIndex(indexPath, int64(config.BitsForBucket), int64(config.ItemsPerBucket), int64(config.IndexSize))
 	if err != nil {
 		return nil, err
 	}

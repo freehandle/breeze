@@ -13,6 +13,7 @@ import (
 	"github.com/freehandle/breeze/consensus/relay"
 	"github.com/freehandle/breeze/consensus/swell"
 	"github.com/freehandle/breeze/crypto"
+	"github.com/freehandle/breeze/middleware/config"
 	"github.com/freehandle/breeze/socket"
 )
 
@@ -20,16 +21,17 @@ const usage = "usage: blow <path-to-json-config-file> [genesis|sync address toke
 
 func main() {
 	var err error
-	ctx, _ := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
 	if len(os.Args) < 3 {
 		fmt.Println(usage)
 		os.Exit(1)
 	}
-	config, err := LoadConfig(os.Args[1])
+	config, err := config.LoadConfig[NodeConfig](os.Args[1])
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
+
 	log := filepath.Join(config.LogPath, fmt.Sprintf("%v.log", config.Token[0:16]))
 
 	logFile, err := os.OpenFile(log, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
@@ -45,6 +47,7 @@ func main() {
 	swellConfig := SwellConfigFromConfig(config)
 	relay, err := RelayFromConfig(ctx, config, crypto.ZeroPrivateKey)
 	if err != nil {
+		cancel()
 		fmt.Printf("could not open relay ports: %v\n", err)
 		os.Exit(1)
 	}
@@ -52,6 +55,7 @@ func main() {
 		fmt.Println("creating genesis node")
 		admin, pk := WaitForKeysSync(ctx, config)
 		if admin == nil {
+			cancel()
 			fmt.Println("canceled")
 			os.Exit(1)
 		}
@@ -75,6 +79,7 @@ func main() {
 			Token: crypto.TokenFromString(os.Args[4]),
 		}
 		if tokenAddr.Token.Equal(crypto.ZeroToken) {
+			cancel()
 			fmt.Printf("invalid token: %v\n%v\n", os.Args[4], usage)
 			os.Exit(1)
 		}
@@ -88,22 +93,24 @@ func main() {
 			TrustedGateway: TokenAddrArrayFromPeeers(config.TrustedNodes),
 		}
 		if admin == nil {
+			cancel()
 			fmt.Println("canceled")
 			os.Exit(1)
 		}
 		err = swell.FullSyncValidatorNode(ctx, validatorConfig, socket.TokenAddr{}, nil)
 	}
 	fmt.Printf("blow node terminated: %v\n", err)
+	cancel()
 }
 
-func TokenAddrFromPeer(peer Peer) socket.TokenAddr {
+func TokenAddrFromPeer(peer config.Peer) socket.TokenAddr {
 	return socket.TokenAddr{
 		Addr:  peer.Address,
 		Token: crypto.TokenFromString(peer.Token),
 	}
 }
 
-func TokenAddrArrayFromPeeers(peers []Peer) []socket.TokenAddr {
+func TokenAddrArrayFromPeeers(peers []config.Peer) []socket.TokenAddr {
 	addrs := make([]socket.TokenAddr, 0)
 	for _, peer := range peers {
 		tokenAddr := TokenAddrFromPeer(peer)

@@ -8,17 +8,17 @@ import (
 	"github.com/freehandle/papirus"
 )
 
-const (
+/*const (
 	IndexSize = 8
 	ItemBytes = IndexSize + 8
-)
+)*/
 
 type IndexPosition struct {
 	Epoch  uint64
 	Offset int64
 }
 
-func compare(hash crypto.Hash, data []byte) bool {
+func compare(hash crypto.Hash, data []byte, IndexSize int) bool {
 	if len(data) < IndexSize {
 		return false
 	}
@@ -30,9 +30,11 @@ func compare(hash crypto.Hash, data []byte) bool {
 	return true
 }
 
-type IndexToken [IndexSize]byte
+//type IndexToken [IndexSize]byte
 
 type Index struct {
+	indexSize      int
+	itemBytes      int
 	store          *papirus.BucketStore
 	bitsForBucket  int
 	lastBucket     []int64
@@ -59,10 +61,10 @@ func (i *Index) Get(hash crypto.Hash, starting uint64) []IndexPosition {
 	for {
 		for n := int64(0); n < i.itemsPerBucket; n++ {
 			item := bucket.ReadItem(n)
-			if compare(hash, item) {
+			if compare(hash, item, i.indexSize) {
 				newItem := IndexPosition{
-					Epoch:  uint64(item[IndexSize]) + uint64(item[IndexSize+1])<<8 + uint64(item[IndexSize+2])<<16 + uint64(item[IndexSize+3])<<24,
-					Offset: int64(item[IndexSize+4]) + int64(item[IndexSize+5])<<8 + int64(item[IndexSize+6])<<16 + int64(item[IndexSize+7])<<24,
+					Epoch:  uint64(item[i.indexSize]) + uint64(item[i.indexSize+1])<<8 + uint64(item[i.indexSize+2])<<16 + uint64(item[i.indexSize+3])<<24,
+					Offset: int64(item[i.indexSize+4]) + int64(item[i.indexSize+5])<<8 + int64(item[i.indexSize+6])<<16 + int64(item[i.indexSize+7])<<24,
 				}
 				if newItem.Epoch >= starting {
 					found = append(found, newItem)
@@ -77,7 +79,7 @@ func (i *Index) Get(hash crypto.Hash, starting uint64) []IndexPosition {
 }
 
 func (i *Index) Append(hash crypto.Hash, epoch uint64, offset int) {
-	data := append(hash[:IndexSize], byte(epoch), byte(epoch>>8), byte(epoch>>16), byte(epoch>>24), byte(offset), byte(offset>>8), byte(offset>>16), byte(offset>>24))
+	data := append(hash[:i.indexSize], byte(epoch), byte(epoch>>8), byte(epoch>>16), byte(epoch>>24), byte(offset), byte(offset>>8), byte(offset>>16), byte(offset>>24))
 	bucket := roundIndexToken(hash, i.bitsForBucket)
 	lastBucket := i.lastBucket[bucket]
 	itemPosition := (i.itemsCount[bucket] + 1) % i.itemsPerBucket
@@ -99,12 +101,13 @@ func roundIndexToken(hash crypto.Hash, bits int) int64 {
 //	return value - (value>>bits)<<bits
 //}
 
-func NewIndex(indexPath string, bitsForBucket, itemsPerBucket int64) (*Index, error) {
+func NewIndex(indexPath string, bitsForBucket, itemsPerBucket, indexSize int64) (*Index, error) {
+	itemBytes := indexSize + 8
 	if bitsForBucket < 1 || bitsForBucket > 32 {
 		return nil, errors.New("bitsForBucket must be between 1 and 32")
 	}
 	initialBuckets := int64(1 << bitsForBucket)
-	initialSize := initialBuckets*(itemsPerBucket*ItemBytes+8) + papirus.HeaderSize
+	initialSize := initialBuckets*(itemsPerBucket*itemBytes+8) + papirus.HeaderSize
 
 	var bs papirus.ByteStore
 	if indexPath == "" {
@@ -116,11 +119,12 @@ func NewIndex(indexPath string, bitsForBucket, itemsPerBucket int64) (*Index, er
 			bs = fs
 		}
 	}
-	store := papirus.NewBucketStore(ItemBytes, itemsPerBucket, bs)
+	store := papirus.NewBucketStore(itemBytes, itemsPerBucket, bs)
 	if store == nil {
 		return nil, errors.New("could not create index bucket store")
 	}
 	index := &Index{
+		indexSize:      int(indexSize),
 		store:          store,
 		bitsForBucket:  int(bitsForBucket),
 		lastBucket:     make([]int64, initialBuckets),
@@ -133,7 +137,8 @@ func NewIndex(indexPath string, bitsForBucket, itemsPerBucket int64) (*Index, er
 	return index, nil
 }
 
-func OpenIndex(indexPath string, bitsForBucket, itemsPerBucket int64) (*Index, error) {
+func OpenIndex(indexPath string, bitsForBucket, itemsPerBucket, indexSize int64) (*Index, error) {
+	itemBytes := indexSize + 8
 	if indexPath == "" {
 		return nil, errors.New("indexPath cannot be empty")
 	}
@@ -141,12 +146,13 @@ func OpenIndex(indexPath string, bitsForBucket, itemsPerBucket int64) (*Index, e
 	if bs == nil {
 		return nil, errors.New("could not open index file")
 	}
-	store := papirus.NewBucketStore(ItemBytes, itemsPerBucket, bs)
+	store := papirus.NewBucketStore(itemBytes, itemsPerBucket, bs)
 	if store == nil {
 		return nil, errors.New("could not open index bucket store")
 	}
 	initialBuckets := int64(1 << bitsForBucket)
 	index := &Index{
+		indexSize:      int(indexSize),
 		store:          store,
 		bitsForBucket:  int(bitsForBucket),
 		lastBucket:     make([]int64, initialBuckets),
@@ -169,7 +175,7 @@ func OpenIndex(indexPath string, bitsForBucket, itemsPerBucket int64) (*Index, e
 		for j := int64(0); j < itemsPerBucket; j++ {
 			item := b.ReadItem(j)
 			isNull := true
-			for k := 0; k < IndexSize; k++ {
+			for k := 0; k < index.indexSize; k++ {
 				if item[k] != 0 {
 					isNull = false
 					break

@@ -2,9 +2,11 @@ package main
 
 import (
 	"testing"
+
+	"github.com/freehandle/breeze/middleware/config"
 )
 
-var config string = `
+var configTest string = `
 {
 	"address": "192.168.0.1",
 	"adminPort": 5403,
@@ -57,7 +59,7 @@ var config string = `
 
 func TestConfigParse(t *testing.T) {
 	token := "7eb7aa3582b216bba42d45e91e0a560508478f5b55228439b42733945fd5c2f5"
-	c, err := ParseJSON(config)
+	c, err := config.ParseJSON[NodeConfig](configTest)
 	if err != nil {
 		t.Error(err)
 	}

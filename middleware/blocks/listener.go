@@ -15,13 +15,15 @@ import (
 
 type ListenerConfig struct {
 	Credentials crypto.PrivateKey
-	DBPath      string
-	Indexed     bool
+	DB          blockdb.DBConfig
+	Swell       swell.SwellNetworkConfiguration
 	Port        int
 	HttpInfo    bool
 	HttpPort    int
 	Firewall    *socket.AcceptValidConnections
 	Hostname    string
+	Sources     []socket.TokenAddr
+	keepN       int
 }
 
 type ListenerNode struct {
@@ -32,25 +34,30 @@ type ListenerNode struct {
 	db              *blockdb.BlockchainHistory
 	live            []*socket.SignedConnection
 	subscribers     []*socket.SignedConnection
+	recent          []*chain.CommitBlock
+	keepN           int
 }
 
-func NewListener(config ListenerConfig) (*ListenerNode, error) {
+func NewListener(ctx context.Context, config ListenerConfig) (*ListenerNode, error) {
 	if config.Firewall == nil {
 		return nil, fmt.Errorf("firewall config required")
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	cfg := swell.ValidatorConfig{
 		Credentials:    config.Credentials,
 		WalletPath:     "",
 		Hostname:       "localhost",
-		TrustedGateway: []socket.TokenAddr{},
+		TrustedGateway: config.Sources,
 	}
 	listener := &ListenerNode{
 		Credentials: config.Credentials,
+		recent:      make([]*chain.CommitBlock, 0, config.keepN),
+		keepN:       config.keepN,
 	}
 	var err error
-	listener.db, err = blockdb.NewBlockchainHistory(config.DBPath, true)
+	listener.db, err = blockdb.NewBlockchainHistory(config.DB)
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 	newConnListener, err := socket.Listen(fmt.Sprintf("%s:%d", config.Hostname, config.Port))
@@ -59,10 +66,17 @@ func NewListener(config ListenerConfig) (*ListenerNode, error) {
 		return nil, err
 	}
 	standBy := make(chan *swell.StandByNode)
-	err = swell.FullSyncValidatorNode(ctx, cfg, socket.TokenAddr{}, standBy)
-	if err != nil {
+	connectedToNetwork := false
+	for _, source := range config.Sources {
+		err = swell.FullSyncValidatorNode(ctx, cfg, source, standBy)
+		if err == nil {
+			connectedToNetwork = true
+			break
+		}
+	}
+	if !connectedToNetwork {
 		cancel()
-		return nil, err
+		return nil, fmt.Errorf("could not connect to network")
 	}
 	listener.Standby = <-standBy
 	go func() {
@@ -124,6 +138,19 @@ func (b *ListenerNode) IncorporateBlocks(blocks []*chain.CommitBlock) error {
 			return err
 		}
 		b.LastCommitEpoch = block.Header.Epoch
+		if len(b.recent) == b.keepN {
+			b.recent = append(b.recent[1:], block)
+		} else {
+			b.recent = append(b.recent, block)
+		}
 	}
 	return nil
+}
+
+func (b *ListenerNode) Recent() []*chain.CommitBlock {
+	b.mu.Lock()
+	blocks := make([]*chain.CommitBlock, len(b.recent))
+	copy(blocks, b.recent)
+	b.mu.Unlock()
+	return blocks
 }
