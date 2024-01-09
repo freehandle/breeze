@@ -89,6 +89,19 @@ func PutByteArray(b []byte, data *[]byte) {
 	*data = append(*data, append([]byte{byte(v), byte(v >> 8)}, b...)...)
 }
 
+func PutLargeByteArray(b []byte, data *[]byte) {
+	if len(b) == 0 {
+		*data = append(*data, 0, 0, 0, 0)
+		return
+	}
+	if len(b) > 1<<32-1 {
+		*data = append(*data, append([]byte{255, 255, 255, 255}, b[0:1<<32-1]...)...)
+		return
+	}
+	v := len(b)
+	*data = append(*data, append([]byte{byte(v), byte(v >> 8), byte(v >> 16), byte(v >> 24)}, b...)...)
+}
+
 func PutString(value string, data *[]byte) {
 	PutByteArray([]byte(value), data)
 }
@@ -277,6 +290,20 @@ func ParseByteArray(data []byte, position int) ([]byte, int) {
 		return []byte{}, position + length + 2
 	}
 	return (data[position+2 : position+length+2]), position + length + 2
+}
+
+func ParseLargeByteArray(data []byte, position int) ([]byte, int) {
+	if position+1 >= len(data) {
+		return []byte{}, position
+	}
+	length := int(data[position+0]) | int(data[position+1])<<8 | int(data[position+2])<<16 | int(data[position+3])<<24
+	if length == 0 {
+		return []byte{}, position + 4
+	}
+	if position+length+4 > len(data) {
+		return []byte{}, position + length + 4
+	}
+	return (data[position+4 : position+length+4]), position + length + 4
 }
 
 func ParseString(data []byte, position int) (string, int) {

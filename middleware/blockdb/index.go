@@ -1,22 +1,10 @@
 package blockdb
 
-import (
-	"fmt"
-	"path/filepath"
-	"sort"
-
-	"github.com/freehandle/breeze/consensus/chain"
-	"github.com/freehandle/breeze/crypto"
-	"github.com/freehandle/breeze/protocol/actions"
-	"github.com/freehandle/breeze/util"
-	"github.com/freehandle/papirus"
-)
-
 const FileNum = 1
 const IndexTokenSize = 8
 const EntrySize = IndexTokenSize + 8
 
-type Indexed struct {
+/*type Indexed struct {
 	files [FileNum]papirus.ByteStore
 }
 
@@ -203,3 +191,4 @@ func IndexCommitBlock(commit *chain.CommitBlock) [FileNum]map[IndexToken][]int64
 	}
 	return index
 }
+*/
