@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"sync"
 
+	"github.com/freehandle/breeze/consensus/admin"
 	"github.com/freehandle/breeze/consensus/chain"
 	"github.com/freehandle/breeze/consensus/swell"
 	"github.com/freehandle/breeze/crypto"
@@ -18,8 +19,6 @@ type ListenerConfig struct {
 	DB          blockdb.DBConfig
 	Swell       swell.SwellNetworkConfiguration
 	Port        int
-	HttpInfo    bool
-	HttpPort    int
 	Firewall    *socket.AcceptValidConnections
 	Hostname    string
 	Sources     []socket.TokenAddr
@@ -35,10 +34,11 @@ type ListenerNode struct {
 	live            []*socket.SignedConnection
 	subscribers     []*socket.SignedConnection
 	recent          []*chain.CommitBlock
+	firewall        *socket.AcceptValidConnections
 	keepN           int
 }
 
-func NewListener(ctx context.Context, config ListenerConfig) (*ListenerNode, error) {
+func NewListener(ctx context.Context, adm *admin.Administration, config ListenerConfig) (*ListenerNode, error) {
 	if config.Firewall == nil {
 		return nil, fmt.Errorf("firewall config required")
 	}
@@ -52,6 +52,7 @@ func NewListener(ctx context.Context, config ListenerConfig) (*ListenerNode, err
 	listener := &ListenerNode{
 		Credentials: config.Credentials,
 		recent:      make([]*chain.CommitBlock, 0, config.keepN),
+		firewall:    config.Firewall,
 		keepN:       config.keepN,
 	}
 	var err error
@@ -79,6 +80,26 @@ func NewListener(ctx context.Context, config ListenerConfig) (*ListenerNode, err
 		return nil, fmt.Errorf("could not connect to network")
 	}
 	listener.Standby = <-standBy
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case firewall := <-adm.FirewallAction:
+				if firewall.Scope == admin.GrantBlockListener {
+					listener.firewall.Add(firewall.Token)
+				} else if firewall.Scope == admin.RevokeBlockListener {
+					listener.firewall.Remove(firewall.Token)
+				}
+			case activation := <-adm.Activation:
+				// there is no activation for a block listener
+				activation.Response <- false
+			}
+		}
+
+	}()
+
 	go func() {
 		for {
 			if !listener.Standby.LastEvents.Wait() {

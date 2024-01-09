@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/freehandle/breeze/crypto"
+	"github.com/freehandle/breeze/socket"
 )
 
 type Configurable interface {
@@ -193,4 +194,29 @@ func StandardPOABreezeConfig(authority crypto.Token) BreezeConfig {
 		MaxBlockSize:          1e9,
 		Swell:                 StandardSwellConfig,
 	}
+}
+
+func FirewallToValidConnections(f FirewallConfig) *socket.AcceptValidConnections {
+	tokens := make([]crypto.Token, 0)
+	for _, tokenStr := range f.Whitelist {
+		token := crypto.TokenFromString(tokenStr)
+		if token != crypto.ZeroToken {
+			tokens = append(tokens, token)
+		}
+	}
+	return socket.NewValidConnections(tokens, f.OpenRelay)
+}
+
+func PeersToTokenAddr(peers []Peer) []socket.TokenAddr {
+	tk := make([]socket.TokenAddr, 0)
+	for _, peer := range peers {
+		token := crypto.TokenFromString(peer.Token)
+		if token != crypto.ZeroToken {
+			tk = append(tk, socket.TokenAddr{
+				Token: token,
+				Addr:  peer.Address,
+			})
+		}
+	}
+	return tk
 }

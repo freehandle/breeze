@@ -1,23 +1,42 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
+	"os"
+	"os/signal"
+	"path/filepath"
 
 	"github.com/freehandle/breeze/crypto"
-	"github.com/freehandle/breeze/crypto/dh"
+	"github.com/freehandle/breeze/middleware/blockdb"
+	"github.com/freehandle/breeze/middleware/blocks"
 	"github.com/freehandle/breeze/middleware/config"
+)
+
+const usage = "usage: echo <path-to-json-config-file>"
+
+var (
+	ItemsPerBucket = 10
+	BitsForBucket  = 10
+	IndexSize      = 8
 )
 
 // Echoconfig is the configuration for an echo service
 type EchoConfig struct {
 	// Token of the service... credentials will be provided by diffie-hellman
 	Token string
+	Port  int
 	// The address of the service (IP or domain name)
 	Address string
 	// Port for admin connections
 	AdminPort int
 	// WalletPath should be empty for memory based wallet store
 	// OR should be a path to a valid folder with appropriate permissions
+	StoragePath string
+
+	Indexed bool
+
 	WalletPath string
 	// LogPath should be empty for standard logging
 	// OR should be a path to a valid folder with appropriate permissions
@@ -25,26 +44,64 @@ type EchoConfig struct {
 	// Breeze network configuration
 	Breeze config.BreezeConfig
 
+	Firewall config.FirewallConfig
+
 	TrustedNode []config.Peer
 }
 
-func main() {
-	remotePk, remote := dh.NewEphemeralKey()
-	ephPk, eph := dh.NewEphemeralKey()
-	_, pk := crypto.RandomAsymetricKey()
-	cipher := dh.ConsensusCipher(ephPk, remote)
-	remotePKCipher := cipher.Seal(pk[:])
+func (cfg EchoConfig) Check() error {
+	return nil
+}
 
-	cipher2 := dh.ConsensusCipher(remotePk, eph)
-	data, err := cipher2.Open(remotePKCipher)
-	if err != nil {
-		panic(err)
+func configToListenerConfig(cfg EchoConfig, pk crypto.PrivateKey) blocks.ListenerConfig {
+	return blocks.ListenerConfig{
+		Credentials: pk,
+		DB: blockdb.DBConfig{
+			Path:           cfg.StoragePath,
+			Indexed:        cfg.Indexed,
+			ItemsPerBucket: ItemsPerBucket,
+			BitsForBucket:  BitsForBucket,
+			IndexSize:      IndexSize,
+		},
+		Port:     cfg.Port,
+		Firewall: config.FirewallToValidConnections(cfg.Firewall),
+		Hostname: "localhost",
+		Sources:  config.PeersToTokenAddr(cfg.TrustedNode),
 	}
-	var cpk crypto.PrivateKey
-	copy(cpk[:], data)
+}
 
-	fmt.Println(pk, remotePk)
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Println(usage)
+		os.Exit(1)
+	}
+	cfg, err := config.LoadConfig[EchoConfig](os.Args[1])
+	if err != nil {
+		fmt.Printf("configuration error: %v\n", err)
+		os.Exit(1)
+	}
 
-	fmt.Println(crypto.IsValidPrivateKey(remotePk[:]))
-	fmt.Println(crypto.IsValidPrivateKey(cpk[:]))
+	node := crypto.TokenFromString(cfg.Token)
+
+	if cfg.LogPath != "" {
+		log := filepath.Join(cfg.LogPath, fmt.Sprintf("%v.log", cfg.Token[0:16]))
+		logFile, err := os.OpenFile(log, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+		if err != nil {
+			fmt.Printf("could not open log file: %v\n", err)
+			os.Exit(1)
+		}
+		var programLevel = new(slog.LevelVar) // Info by default
+		programLevel.Set(slog.LevelDebug)
+		logger := slog.NewTextHandler(logFile, &slog.HandlerOptions{Level: programLevel})
+		slog.SetDefault(slog.New(logger))
+
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	admin, pk := config.WaitForKeysSync(ctx, node, cfg.AdminPort)
+	blocks.NewListener(ctx, admin, configToListenerConfig(*cfg, pk))
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	<-c
+	cancel()
 }
