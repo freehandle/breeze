@@ -19,7 +19,7 @@ type ConfigGateway struct {
 	Wallet          crypto.PrivateKey
 	ActionPort      int // receive actions
 	NetworkPort     int // receive checksums and send block events
-	TrustedProvider socket.TokenAddr
+	TrustedProvider []socket.TokenAddr
 	Hostname        string
 }
 
@@ -28,7 +28,7 @@ type ConfigGateway struct {
 // and forward actions to them in accordanco with the swell consensus protocol
 // rules. At each time it will send the action to the current proposer and
 // the next SendToNValidators validators in the current order. It will also
-type Gateway struct {
+type Gateways struct {
 	mu          sync.Mutex
 	credentials crypto.PrivateKey
 	wallet      crypto.PrivateKey
@@ -81,9 +81,18 @@ func (g *Gateway) releaseConnections(validators []socket.TokenAddr) {
 
 func NewConfigGateway(ctx context.Context, config ConfigGateway) chan error {
 	finalize := make(chan error, 2)
-	provider, err := socket.Dial(config.Hostname, config.TrustedProvider.Addr, config.Credentials, config.TrustedProvider.Token)
-	if err != nil {
-		finalize <- err
+	connected := false
+	var provider *socket.SignedConnection
+	var err error
+	for _, trusted := range config.TrustedProvider {
+		provider, err = socket.Dial(config.Hostname, trusted.Addr, config.Credentials, trusted.Token)
+		if err == nil {
+			connected = true
+			break
+		}
+	}
+	if !connected {
+		finalize <- errors.New("could not connect to any trusted provider")
 		return finalize
 	}
 	provider.Send([]byte{messages.MsgNetworkTopologyReq})
@@ -93,6 +102,7 @@ func NewConfigGateway(ctx context.Context, config ConfigGateway) chan error {
 		return finalize
 	}
 	order, validators := swell.ParseCommitee(msg)
+
 	if len(order) < 1 || len(validators) < 1 {
 		finalize <- errors.New("could not retrieve valid network topology from provider")
 		return finalize

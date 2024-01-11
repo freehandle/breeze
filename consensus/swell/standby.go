@@ -69,7 +69,7 @@ func RunReplicaNode(w *Window, conn *socket.SignedConnection) *StandByNode {
 				slog.Info("RunReplicaNode: service terminated by context")
 				return
 			case next := <-nextWindow:
-				err := node.connPool.AddOne(next.validators)
+				_, err := node.connPool.AddOne(next.validators)
 				if err != nil {
 					slog.Warn("RunReplicaNode: could not add validator to pool", "err", err)
 				}

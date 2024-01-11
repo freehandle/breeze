@@ -1,6 +1,8 @@
 package messages
 
 import (
+	"time"
+
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/socket"
 	"github.com/freehandle/breeze/util"
@@ -39,37 +41,62 @@ const (
 	MsgChecksumStatement
 	MsgNetworkTopologyReq
 	MsgNetworkTopologyResponse
+
+	MsgError
 )
 
-func NetworkTopologyMessage(validators []socket.TokenAddr) []byte {
+type NetworkTopology struct {
+	Start      uint64
+	End        uint64
+	StartAt    time.Time
+	Order      []crypto.Token
+	Validators []socket.TokenAddr
+}
+
+func (n *NetworkTopology) Serialize() []byte {
 	bytes := []byte{MsgNetworkTopologyResponse}
-	util.PutUint16(uint16(len(validators)), &bytes)
-	for _, validator := range validators {
+	util.PutUint64(n.Start, &bytes)
+	util.PutUint64(n.End, &bytes)
+	util.PutTime(n.StartAt, &bytes)
+	util.PutUint16(uint16(len(n.Order)), &bytes)
+	for _, token := range n.Order {
+		util.PutToken(token, &bytes)
+	}
+	util.PutUint16(uint16(len(n.Validators)), &bytes)
+	for _, validator := range n.Validators {
 		util.PutToken(validator.Token, &bytes)
 		util.PutString(validator.Addr, &bytes)
 	}
 	return bytes
 }
 
-func ParseNetworkTopologyMessage(data []byte) []socket.TokenAddr {
+func ParseNetworkTopologyMessage(data []byte) *NetworkTopology {
 	if len(data) < 1 || data[0] != MsgNetworkTopologyResponse {
 		return nil
 	}
+	var count uint16
 	position := 1
-	count, position := util.ParseUint16(data, position)
-	topology := make([]socket.TokenAddr, count)
+	topology := NetworkTopology{}
+	topology.Start, position = util.ParseUint64(data, position)
+	topology.End, position = util.ParseUint64(data, position)
+	topology.StartAt, position = util.ParseTime(data, position)
+
+	count, position = util.ParseUint16(data, position)
+	topology.Order = make([]crypto.Token, count)
+	for n := uint16(0); n < count; n++ {
+		topology.Order[n], position = util.ParseToken(data, position)
+	}
+	count, position = util.ParseUint16(data, position)
+	topology.Validators = make([]socket.TokenAddr, count)
 	for n := uint16(0); n < count; n++ {
 		member := socket.TokenAddr{}
 		member.Token, position = util.ParseToken(data, position)
 		member.Addr, position = util.ParseString(data, position)
-		if member.Addr != "" {
-			topology = append(topology, member)
-		}
 	}
 	if position != len(data) {
 		return nil
 	}
-	return topology
+	return &topology
 }
 
 func BlockMessage(block []byte) []byte {

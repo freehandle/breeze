@@ -3,6 +3,7 @@ package socket
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"math/rand"
 
 	"github.com/freehandle/breeze/crypto"
@@ -21,6 +22,74 @@ type Aggregator struct {
 	cancel      chan crypto.Token
 	add         chan *SignedConnection
 	cancelall   chan struct{}
+	closed      chan *SignedConnection
+}
+
+// TrustedAggregator mantains a sample of connections preferrably to trusted
+// tokens.
+type TrustedAggregator struct {
+	trusty     []TokenAddr
+	untrusty   []TokenAddr
+	closed     []TokenAddr
+	sample     int
+	aggregator *Aggregator
+	Activate   chan *SignedConnection
+}
+
+func NewTrustedAgregator(ctx context.Context, hostname string, credentials crypto.PrivateKey, size int, trusted, available []TokenAddr, connections ...*SignedConnection) *TrustedAggregator {
+	trst := TrustedAggregator{
+		trusty:     trusted,
+		untrusty:   make([]TokenAddr, 0),
+		closed:     make([]TokenAddr, 0),
+		sample:     size,
+		aggregator: NewAgregator(ctx, hostname, credentials, connections...),
+		Activate:   make(chan *SignedConnection),
+	}
+	closed := make(chan *SignedConnection)
+	trst.aggregator.closed = closed
+
+	for _, conn := range available {
+		isUntrusted := true
+		for _, trust := range trusted {
+			if trust.Token.Equal(conn.Token) && trust.Addr == conn.Addr {
+				isUntrusted = false
+				break
+			}
+		}
+		if isUntrusted {
+			trst.untrusty = append(trst.untrusty, conn)
+		}
+	}
+
+	go func() {
+		defer close(trst.Activate)
+		for {
+			// aggregator will close the closed channel on context cancelation
+			conn, ok := <-closed
+			if !ok {
+				return
+			}
+			trst.closed = append(trst.closed, TokenAddr{Token: conn.Token, Addr: conn.Address})
+			conn, err := trst.aggregator.AddNewOne(trst.trusty)
+			if err == nil {
+				trst.Activate <- conn
+				continue
+			}
+			conn, err = trst.aggregator.AddNewOne(trst.untrusty)
+			if err == nil {
+				trst.Activate <- conn
+				continue
+			}
+			if len(trst.closed) > 0 {
+				conn, err = trst.aggregator.AddNewOne(trst.closed)
+				if err != nil {
+					trst.Activate <- conn
+					slog.Info("TrustedAggregator could not keep target sample size")
+				}
+			}
+		}
+	}()
+	return &trst
 }
 
 // NewAgregator creates a new aggregator. The aggregator is live until the context
@@ -53,6 +122,9 @@ func NewAgregator(ctx context.Context, hostname string, credentials crypto.Priva
 				aggregator.live = false
 				close(aggregator.cancel)
 				close(aggregator.add)
+				if aggregator.closed != nil {
+					close(aggregator.closed)
+				}
 				return
 			case conn, ok := <-aggregator.add:
 				if ok {
@@ -64,8 +136,12 @@ func NewAgregator(ctx context.Context, hostname string, credentials crypto.Priva
 						if provider.Token.Equal(token) {
 							aggregator.providers = append(aggregator.providers[:i], aggregator.providers[i+1:]...)
 							provider.Shutdown()
+							if aggregator.closed != nil {
+								aggregator.closed <- provider
+							}
 						}
 					}
+
 				}
 			case <-aggregator.cancelall:
 				for _, provider := range aggregator.providers {
@@ -114,30 +190,50 @@ func (b *Aggregator) HasAny(peers []TokenAddr) bool {
 // select a random peer to connect to, and if not successful it will try the next
 // (in a circular fashion) one until it can connect to one. If it cannot connect
 // to any of the given peers, an error is returned.
-func (b *Aggregator) AddOne(peers []TokenAddr) error {
+func (b *Aggregator) AddOne(peers []TokenAddr) (*SignedConnection, error) {
 	if b.HasAny(peers) {
-		return nil
+		return nil, nil
 	}
 	value := rand.Intn(len(peers))
 	for n := 0; n < len(peers); n++ {
-		err := b.AddProvider(peers[(value+n)%len(peers)])
+		conn, err := b.AddProvider(peers[(value+n)%len(peers)])
 		if err == nil {
-			return nil
+			return conn, nil
 		}
 	}
-	return errors.New("could not connect to any peer")
+	return nil, errors.New("could not connect to any peer")
+}
+
+// AddNewOne will try to establish a new connection with one of the given peers.
+// It will select a random peer to connect to, and if not successful it will try
+// the next (in a circular fashion) one until it can connect to one.
+// If there is no new peer provided or it cannot connect to any of the given new
+//
+//	peers, an error is returned.
+func (b *Aggregator) AddNewOne(peers []TokenAddr) (*SignedConnection, error) {
+	value := rand.Intn(len(peers))
+	for n := 0; n < len(peers); n++ {
+		peer := (value + n) % len(peers)
+		if !b.Has(peers[peer]) {
+			conn, err := b.AddProvider(peers[peer])
+			if err == nil {
+				return conn, nil
+			}
+		}
+	}
+	return nil, errors.New("could not connect to any peer")
 }
 
 // AddProvider tries to connect to the given provider and add it to the list of
 // providers. If the connection fails, an error is returned.
-func (b *Aggregator) AddProvider(provider TokenAddr) error {
+func (b *Aggregator) AddProvider(provider TokenAddr) (*SignedConnection, error) {
 	conn, err := Dial(b.hostname, provider.Addr, b.credentials, provider.Token)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !b.live {
 		conn.Shutdown()
-		return errors.New("cannot add provider to non-live blocks")
+		return nil, errors.New("cannot add provider to non-live blocks")
 	} else {
 		b.add <- conn
 	}
@@ -151,7 +247,7 @@ func (b *Aggregator) AddProvider(provider TokenAddr) error {
 			b.buffer.Push(data)
 		}
 	}()
-	return nil
+	return conn, nil
 }
 
 // CloseProvider closes the connection to the given provider and exludes it from

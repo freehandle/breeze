@@ -59,9 +59,10 @@ type Firewall struct {
 // events. SyncRequest channel should be read by the validating node to receive
 // requests for state sync and recenet blocks sync.
 type Node struct {
-	ActionGateway      chan []byte      // Sends actions to swell engine
-	BlockEvents        chan []byte      // receive block events from swell engine
-	SyncRequest        chan SyncRequest // sends sync requests to swell engine
+	ActionGateway      chan []byte                   // Sends actions to swell engine
+	BlockEvents        chan []byte                   // receive block events from swell engine
+	SyncRequest        chan SyncRequest              // sends sync requests to swell engine
+	TopologyRequest    chan *socket.SignedConnection // sends request for topology
 	Statement          chan []byte
 	Firewall           chan admin.FirewallAction
 	config             *Config
@@ -105,12 +106,13 @@ type SyncRequest struct {
 // of the context, the entire relay network is graciously shutdown.
 func Run(ctx context.Context, cfg Config) (*Node, error) {
 	n := &Node{
-		ActionGateway: make(chan []byte),
-		Statement:     make(chan []byte),
-		BlockEvents:   make(chan []byte),
-		SyncRequest:   make(chan SyncRequest),
-		Firewall:      make(chan admin.FirewallAction),
-		config:        &cfg,
+		ActionGateway:   make(chan []byte),
+		Statement:       make(chan []byte),
+		BlockEvents:     make(chan []byte),
+		SyncRequest:     make(chan SyncRequest),
+		TopologyRequest: make(chan *socket.SignedConnection),
+		Firewall:        make(chan admin.FirewallAction),
+		config:          &cfg,
 	}
 
 	var listenAdminPort net.Listener
@@ -227,7 +229,7 @@ func Run(ctx context.Context, cfg Config) (*Node, error) {
 				if err != nil {
 					conn.Close()
 				}
-				go WaitForOutgoingSyncRequest(trustedConn, newBlockListener, dropConnection, action)
+				go WaitForOutgoingSyncRequest(trustedConn, newBlockListener, dropConnection, action, n.TopologyRequest)
 			} else {
 				slog.Warn("poa outgoing listener error", "error", err)
 				return
@@ -264,7 +266,7 @@ func WaitForProtocolActions(conn *socket.SignedConnection, terminate chan crypto
 // WaitForOutgoingSyncRequest reads a sync request from a connection and sends
 // it to the sync request channel. If it is not a valid request, if closes the
 // conection and returns without sending anything to outgoing channel.
-func WaitForOutgoingSyncRequest(conn *socket.SignedConnection, outgoing chan SyncRequest, drop chan crypto.Token, action chan []byte) {
+func WaitForOutgoingSyncRequest(conn *socket.SignedConnection, outgoing chan SyncRequest, drop chan crypto.Token, action chan []byte, topology chan *socket.SignedConnection) {
 	lastSync := time.Now().Add(-time.Hour)
 	for {
 		data, err := conn.Read()
@@ -287,6 +289,10 @@ func WaitForOutgoingSyncRequest(conn *socket.SignedConnection, outgoing chan Syn
 			}
 		} else if data[0] == messages.MsgChecksumStatement {
 			action <- data
+		} else if data[0] == messages.MsgNetworkTopologyReq {
+			topology <- conn
+		} else {
+			conn.Send([]byte{messages.MsgError})
 		}
 	}
 }

@@ -90,6 +90,7 @@ func performClientHandShake(conn net.Conn, prvKey crypto.PrivateKey, remotePub c
 		Token: remotePub,
 		conn:  conn,
 		key:   prvKey,
+		Live:  true,
 	}, nil
 }
 
@@ -143,5 +144,6 @@ func PromoteConnection(conn net.Conn, prvKey crypto.PrivateKey, validator Valida
 		Token: remoteToken,
 		conn:  conn,
 		key:   prvKey,
+		Live:  false,
 	}, nil
 }

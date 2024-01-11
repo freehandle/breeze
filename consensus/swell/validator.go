@@ -74,6 +74,21 @@ func RunValidator(c *Window) {
 		cancel := c.ctx.Done()
 		for {
 			select {
+			case response := <-c.Node.relay.TopologyRequest:
+				if response == nil {
+					slog.Error("TopologyRequest with empty connection received")
+					continue
+				}
+				topology := &messages.NetworkTopology{
+					Start:      c.Start,
+					End:        c.End,
+					StartAt:    c.Node.TimeStampBlock(c.Start),
+					Order:      c.Committee.order,
+					Validators: c.Committee.validators,
+				}
+				if err := response.Send(topology.Serialize()); err != nil {
+					response.Shutdown()
+				}
 			case syncRequest := <-c.Node.relay.SyncRequest:
 				msg := append([]byte{messages.MsgCommittee}, c.Committee.Serialize()...)
 				syncRequest.Conn.SendDirect(msg)

@@ -93,6 +93,11 @@ type SignedConnection struct {
 	Address string
 	key     crypto.PrivateKey
 	conn    net.Conn
+	Live    bool
+}
+
+func (s *SignedConnection) Is(token crypto.Token) bool {
+	return s.Token.Equal(token)
 }
 
 // Send up to 1<<32 - 1 bytes of data. It returns an error if the message is
@@ -202,4 +207,5 @@ func (s *SignedConnection) Listen(newMessages chan Message, shutdown chan crypto
 // Shutdown graciously closed the connection.
 func (s *SignedConnection) Shutdown() {
 	s.conn.Close()
+	s.Live = false
 }
