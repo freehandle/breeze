@@ -7,9 +7,10 @@ import (
 
 	"fmt"
 
+	"github.com/freehandle/breeze/consensus/admin"
 	"github.com/freehandle/breeze/consensus/messages"
-	"github.com/freehandle/breeze/consensus/swell"
 	"github.com/freehandle/breeze/crypto"
+	"github.com/freehandle/breeze/middleware/config"
 	"github.com/freehandle/breeze/socket"
 )
 
@@ -21,12 +22,14 @@ const (
 
 type Configuration struct {
 	Credentials     crypto.PrivateKey
+	Wallet          crypto.PrivateKey
 	Hostname        string
 	Port            int
 	Firewall        *socket.AcceptValidConnections
 	Trusted         []socket.TokenAddr
 	ActionRelayPort int
 	BlockRelayPort  int
+	Breeze          config.BreezeConfig
 }
 
 type Server struct {
@@ -34,7 +37,7 @@ type Server struct {
 	serving []*socket.SignedConnection
 }
 
-func RetrieveTopology(config Configuration) ([]crypto.Token, []socket.TokenAddr) {
+func RetrieveTopology(config Configuration) (*messages.NetworkTopology, *socket.SignedConnection) {
 	for _, candidate := range config.Trusted {
 		addr := fmt.Sprintf("%s:%d", candidate.Addr, config.BlockRelayPort)
 		provider, err := socket.Dial(config.Hostname, addr, config.Credentials, candidate.Token)
@@ -44,31 +47,63 @@ func RetrieveTopology(config Configuration) ([]crypto.Token, []socket.TokenAddr)
 			if err != nil {
 				continue
 			}
-			order, validators := swell.ParseCommitee(msg)
-			if len(order) > 0 && len(validators) > 0 {
-				return order, validators
+			topology := messages.ParseNetworkTopologyMessage(msg)
+			if topology != nil {
+				return topology, provider
 			}
 		}
 	}
 	return nil, nil
 }
 
-func NewGateway(ctx context.Context, config Configuration) chan error {
+func NewServer(ctx context.Context, config Configuration, administration *admin.Administration) chan error {
 	terminate := make(chan error, 2)
 	listener, err := socket.Listen(fmt.Sprintf("%s:%d", config.Hostname, config.Port))
 	if err != nil {
 		terminate <- err
 		return terminate
 	}
+	topology, conn := RetrieveTopology(config)
+	if topology == nil {
+		terminate <- fmt.Errorf("could not retrieve network topology")
+		return terminate
+	}
 
-	order, validators := RetrieveTopology(config)
-	provider.Send([]byte{messages.MsgNetworkTopologyReq})
+	proposal := make(chan *Propose)
+	LaunchGateway(ctx, config, conn, topology, proposal)
 
 	server := Server{
 		serving: make([]*socket.SignedConnection, 0),
 	}
 
-	proposal := make(chan Propose)
+	liveClients := &sync.WaitGroup{}
+
+	go func() {
+		done := ctx.Done()
+		for {
+			select {
+			case <-done:
+				listener.Close()
+				server.mu.Lock()
+				for _, conn := range server.serving {
+					conn.Shutdown()
+				}
+				server.mu.Unlock()
+				liveClients.Wait()
+				close(proposal)
+				return
+			case firewall := <-administration.FirewallAction:
+				if firewall.Scope == admin.GrantGateway {
+					config.Firewall.Add(firewall.Token)
+				} else if firewall.Scope == admin.RevokeGateway {
+					config.Firewall.Remove(firewall.Token)
+				}
+			case status := <-administration.Status:
+				status <- fmt.Sprintf("Gateway: %d clients connected", len(server.serving))
+			}
+		}
+
+	}()
 
 	go func() {
 		for {
@@ -85,13 +120,14 @@ func NewGateway(ctx context.Context, config Configuration) chan error {
 			server.mu.Lock()
 			server.serving = append(server.serving, trusted)
 			server.mu.Unlock()
-			go server.WaitForActions(trusted, proposal)
+			liveClients.Add(1)
+			go server.WaitForActions(trusted, proposal, liveClients)
 		}
 	}()
 	return terminate
 }
 
-func (s *Server) WaitForActions(conn *socket.SignedConnection, proposal chan Propose) {
+func (s *Server) WaitForActions(conn *socket.SignedConnection, proposal chan *Propose, terminated *sync.WaitGroup) {
 	for {
 		data, err := conn.Read()
 		if err != nil {
@@ -105,7 +141,7 @@ func (s *Server) WaitForActions(conn *socket.SignedConnection, proposal chan Pro
 			break
 		}
 		if data[1] == ActionMsg && len(data) > 1 {
-			proposal <- Propose{
+			proposal <- &Propose{
 				data: data[1:],
 				conn: conn,
 			}
@@ -119,4 +155,5 @@ func (s *Server) WaitForActions(conn *socket.SignedConnection, proposal chan Pro
 	}
 	s.mu.Unlock()
 	conn.Shutdown()
+	terminated.Done()
 }

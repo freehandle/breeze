@@ -9,36 +9,40 @@ import (
 	"path/filepath"
 
 	"github.com/freehandle/breeze/crypto"
-	"github.com/freehandle/breeze/middleware/blocks"
 	"github.com/freehandle/breeze/middleware/config"
 	"github.com/freehandle/breeze/middleware/gateway"
 )
 
+const usage = `usage: beat <config.json>`
+
 type BeatConfig struct {
-	Token       crypto.Token
-	Wallet      crypto.Token
-	Port        int
-	AdminPort   int
-	LogPath     string
-	GatewayPort int
-	BlocksPort  int
-	Breeze      config.BreezeConfig
-	Firewall    config.FirewallConfig
-	Trusted     []config.Peer
+	Token           string
+	Wallet          string
+	Port            int
+	AdminPort       int
+	LogPath         string
+	ActionRelayPort int
+	BlockRelayPort  int
+	Breeze          config.BreezeConfig
+	Firewall        config.FirewallConfig
+	Trusted         []config.Peer
 }
 
 func (b BeatConfig) Check() error {
 	return nil
 }
 
-func configToGatewayConfig(cfg BeatConfig, node, wallet crypto.PrivateKey) gateway.ConfigGateway {
-	return gateway.ConfigGateway{
+func configToGatewayConfig(cfg BeatConfig, node, wallet crypto.PrivateKey) gateway.Configuration {
+	return gateway.Configuration{
 		Credentials:     node,
 		Wallet:          wallet,
-		ActionPort:      cfg.GatewayPort,
-		NetworkPort:     cfg.BlocksPort,
-		TrustedProvider: config.PeersToTokenAddr(cfg.Trusted),
 		Hostname:        "localhost",
+		Port:            cfg.Port,
+		Firewall:        config.FirewallToValidConnections(cfg.Firewall),
+		Trusted:         config.PeersToTokenAddr(cfg.Trusted),
+		ActionRelayPort: cfg.ActionRelayPort,
+		BlockRelayPort:  cfg.BlockRelayPort,
+		Breeze:          cfg.Breeze,
 	}
 }
 
@@ -47,7 +51,7 @@ func main() {
 		fmt.Println(usage)
 		os.Exit(1)
 	}
-	cfg, err := config.LoadConfig[EchoConfig](os.Args[1])
+	cfg, err := config.LoadConfig[BeatConfig](os.Args[1])
 	if err != nil {
 		fmt.Printf("configuration error: %v\n", err)
 		os.Exit(1)
@@ -71,9 +75,21 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	admin, pk := config.WaitForKeysSync(ctx, node, cfg.AdminPort)
-	blocks.NewListener(ctx, admin, configToListenerConfig(*cfg, pk))
+
+	gateway.NewServer(ctx, configToGatewayConfig(*cfg, pk, pk), admin)
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
-	<-c
-	cancel()
+
+	for {
+		select {
+		case <-c:
+			cancel()
+		case activation := <-admin.Activation:
+			if !activation.Active {
+				slog.Info("beat: received deactivation")
+				cancel()
+			}
+		}
+	}
+	slog.Info("service terminated")
 }

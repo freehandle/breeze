@@ -146,7 +146,7 @@ func RunValidator(c *Window) {
 						}
 					}
 					if c.CanPrepareNextWindow() && c.nextCommittee != nil {
-						msg := append([]byte{messages.MsgNetworkTopologyResponse}, c.nextCommittee.Serialize()...)
+						msg := append([]byte{messages.MsgNextCommittee}, c.nextCommittee.Serialize()...)
 						c.Node.relay.BlockEvents <- msg
 					}
 				} else {

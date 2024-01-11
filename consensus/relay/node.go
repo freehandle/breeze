@@ -179,7 +179,9 @@ func Run(ctx context.Context, cfg Config) (*Node, error) {
 				n.pool.Broadcast(blockEvent)
 			case req := <-newBlockListener:
 				n.pool.Add(req.Conn)
-				n.SyncRequest <- req
+				if req.Epoch != 1<<64-1 {
+					n.SyncRequest <- req
+				}
 			case token := <-dropConnection:
 				n.pool.Drop(token)
 			case action := <-n.Firewall:
@@ -291,6 +293,10 @@ func WaitForOutgoingSyncRequest(conn *socket.SignedConnection, outgoing chan Syn
 			action <- data
 		} else if data[0] == messages.MsgNetworkTopologyReq {
 			topology <- conn
+		} else if data[0] == messages.MsgSubscribeBlockEvents {
+			cached := socket.NewCachedConnection(conn)
+			cached.Ready()
+			outgoing <- SyncRequest{Conn: cached, Epoch: 1<<64 - 1}
 		} else {
 			conn.Send([]byte{messages.MsgError})
 		}

@@ -36,6 +36,10 @@ type TrustedAggregator struct {
 	Activate   chan *SignedConnection
 }
 
+func (t *TrustedAggregator) Read() ([]byte, error) {
+	return t.aggregator.Read()
+}
+
 func NewTrustedAgregator(ctx context.Context, hostname string, credentials crypto.PrivateKey, size int, trusted, available []TokenAddr, connections ...*SignedConnection) *TrustedAggregator {
 	trst := TrustedAggregator{
 		trusty:     trusted,
@@ -82,8 +86,9 @@ func NewTrustedAgregator(ctx context.Context, hostname string, credentials crypt
 			}
 			if len(trst.closed) > 0 {
 				conn, err = trst.aggregator.AddNewOne(trst.closed)
-				if err != nil {
+				if err == nil {
 					trst.Activate <- conn
+				} else {
 					slog.Info("TrustedAggregator could not keep target sample size")
 				}
 			}

@@ -41,6 +41,12 @@ const (
 	MsgChecksumStatement
 	MsgNetworkTopologyReq
 	MsgNetworkTopologyResponse
+	MsgNextCommittee
+	MsgSubscribeBlockEvents
+
+	MsgActionForward
+	MsgActionSealed
+	MsgActionCommit
 
 	MsgError
 )
@@ -166,4 +172,26 @@ func ParseEpochAndHash(data []byte) (uint64, crypto.Hash, []byte) {
 
 func SealedBlock(sealed []byte) []byte {
 	return append([]byte{MsgSealedBlock}, sealed...)
+}
+
+func SealedAction(action crypto.Hash, block uint64, blockHash crypto.Hash) []byte {
+	msg := []byte{MsgActionSealed}
+	util.PutHash(action, &msg)
+	util.PutUint64(block, &msg)
+	util.PutHash(blockHash, &msg)
+	return msg
+}
+
+func ParseSealedAction(msg []byte) (crypto.Hash, uint64, crypto.Hash) {
+	if len(msg) < 1 || msg[0] != MsgActionSealed {
+		return crypto.Hash{}, 0, crypto.Hash{}
+	}
+	position := 1
+	action, position := util.ParseHash(msg, position)
+	block, position := util.ParseUint64(msg, position)
+	blockHash, position := util.ParseHash(msg, position)
+	if position != len(msg) {
+		return crypto.Hash{}, 0, crypto.Hash{}
+	}
+	return action, block, blockHash
 }
