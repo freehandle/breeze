@@ -82,9 +82,17 @@ func NewActionVault(ctx context.Context, epoch uint64, actions chan *Propose) *A
 		pending: make(map[crypto.Hash]*Pending),
 		epoch:   make([][]crypto.Hash, 0),
 		seal:    make(chan SealOnBlock),
-		Pop:     make(chan []byte),
+		sealed:  make(map[crypto.Hash]Seal),
+		Pop:     make(chan []byte, 1),
 		Push:    actions,
 		timer:   make(chan struct{}),
+	}
+	for n := 0; n < 2*MaxActionDelay; n++ {
+		vault.epoch = append(vault.epoch, make([]crypto.Hash, 0))
+		vault.committed = append(vault.committed, make(map[crypto.Hash]struct{}))
+	}
+	for n := 0; n < ReservationTime; n++ {
+		vault.sent[n] = make(map[crypto.Hash]*Pending)
 	}
 
 	go func() {
@@ -128,7 +136,6 @@ func NewActionVault(ctx context.Context, epoch uint64, actions chan *Propose) *A
 					vault.sealAction(sealed.Action, sealed.Epoch, sealed.BlockHash)
 				case hash := <-vault.commit:
 					vault.commitAction(hash)
-				case vault.Pop <- vault.pop():
 				}
 			}
 		}
@@ -164,7 +171,13 @@ func (v *ActionVault) sealAction(action []byte, blockEpoch uint64, blockHash cry
 	seal := Seal{
 		Epoch: actions.GetEpochFromByteArray(action),
 	}
-	pending, hasPending := v.pending[hash]
+	var pending *Pending
+	hasPending := false
+	for r := 0; r < ReservationTime; r++ {
+		if pending, hasPending = v.sent[r][hash]; hasPending {
+			break
+		}
+	}
 	if !hasPending {
 		v.sealed[hash] = seal
 		return
@@ -263,7 +276,11 @@ func (v *ActionVault) push(propose *Propose) bool {
 		return false // invalid
 	}
 	epoch := action.Epoch()
-	if epoch == 0 || epoch < v.clock-MaxActionDelay || epoch > v.clock+MaxActionDelay {
+	firstEpoch := uint64(1)
+	if v.clock > MaxActionDelay {
+		firstEpoch = v.clock - MaxActionDelay
+	}
+	if epoch == 0 || epoch < firstEpoch || epoch > v.clock+MaxActionDelay {
 		return false // reject by epoch out of scope
 	}
 	if !v.isNew(crypto.Hasher(propose.data), epoch) {
