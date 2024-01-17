@@ -49,7 +49,6 @@ func RetrieveTopology(config Configuration) (*messages.NetworkTopology, *socket.
 				continue
 			}
 			topology := messages.ParseNetworkTopologyMessage(msg)
-			fmt.Println(topology)
 			if topology != nil {
 				return topology, provider
 			}
@@ -142,7 +141,7 @@ func (s *Server) WaitForActions(conn *socket.SignedConnection, proposal chan *Pr
 			slog.Info("connection terminated by client", "token", conn.Token)
 			break
 		}
-		if data[1] == ActionMsg && len(data) > 1 {
+		if data[0] == ActionMsg && len(data) > 1 {
 			proposal <- &Propose{
 				data: data[1:],
 				conn: conn,

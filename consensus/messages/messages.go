@@ -30,6 +30,13 @@ const (
 	MsgProtocolCommit      // Sub-Protocol Commit Block Message
 	MsgProtocolSealedBlock
 	MsgProtocolCommitBlock // Sub-Protocol Full Block Message
+	MsgProtocolBlock
+	MsgProtocolBlockCommit
+	MsgProtocolSyncReq
+	MsgProtocolSyncResp
+	MsgProtocolChecksumSync
+	MsgProtocolStateSync
+	MsgProtocolSubscribe
 	MsgCommittee
 
 	MsgRequestBlock // Request a block
@@ -95,9 +102,8 @@ func ParseNetworkTopologyMessage(data []byte) *NetworkTopology {
 	count, position = util.ParseUint16(data, position)
 	topology.Validators = make([]socket.TokenAddr, count)
 	for n := uint16(0); n < count; n++ {
-		member := socket.TokenAddr{}
-		member.Token, position = util.ParseToken(data, position)
-		member.Addr, position = util.ParseString(data, position)
+		topology.Validators[n].Token, position = util.ParseToken(data, position)
+		topology.Validators[n].Addr, position = util.ParseString(data, position)
 	}
 	if position != len(data) {
 		return nil

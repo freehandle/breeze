@@ -61,7 +61,7 @@ func TestGateway(t *testing.T) {
 		Trusted:         []socket.TokenAddr{{Addr: "node0", Token: fake.pks[0].PublicKey()}},
 		ActionRelayPort: 5401,
 		BlockRelayPort:  5402,
-		Breeze:          config.StandardBreezeConfig,
+		Breeze:          *config.StandardBreezeConfig,
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	adm := admin.Administration{
@@ -92,16 +92,24 @@ func TestGateway(t *testing.T) {
 	//
 	time.Sleep(100 * time.Millisecond)
 	socket.TCPNetworkTest.AddNode("client", 1, time.Millisecond, 1e9)
-	fmt.Println("connected")
-
 	conn, err := socket.Dial("client", "gateway:5500", cpk, pk.PublicKey())
 	if err != nil {
 		t.Fatal(err)
 	}
 	action := testAction()
 	conn.Send(append([]byte{ActionMsg}, action...))
-	cancel()
+	if data, err := conn.Read(); err != nil {
+		t.Fatal(err)
+	} else {
+		fmt.Println("resposta", data)
+	}
+	if data, err := fake.gateway[3].Read(); err != nil {
+		t.Fatal(err)
+	} else {
+		fmt.Println("action", data)
+	}
 	if err := <-errors; err != nil {
 		t.Fatal("server failed", err)
 	}
+	cancel()
 }

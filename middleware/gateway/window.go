@@ -48,8 +48,7 @@ func LaunchWindow(ctx context.Context, config Configuration, start, end uint64, 
 		finished <- nil
 		return finished
 	}
-	identity := func(s *socket.SignedConnection) *socket.SignedConnection { return s }
-	promise := socket.AssembleCommittee[*socket.SignedConnection](ctx, validators, nil, identity, config.Credentials, config.ActionRelayPort, config.Hostname)
+	promise := socket.ConnectToAll(ctx, validators, nil, config.Credentials, config.ActionRelayPort, config.Hostname)
 	go func() {
 		pool := <-promise
 		if len(pool) == 0 {
@@ -62,6 +61,7 @@ func LaunchWindow(ctx context.Context, config Configuration, start, end uint64, 
 			End:   end,
 			order: make([]*socket.SignedConnection, len(order)),
 		}
+		slog.Info("LaunchWindow connected to peers", "count", len(pool))
 		for n, token := range order {
 			for _, connected := range pool {
 				if connected.Is(token) {

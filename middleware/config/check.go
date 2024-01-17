@@ -9,6 +9,42 @@ import (
 	"github.com/freehandle/breeze/crypto"
 )
 
+func (c NetworkConfig) Check() error {
+	if c.Breeze != nil {
+		if err := c.Breeze.Check(); err != nil {
+			return fmt.Errorf("Breeze %v", err)
+		}
+	}
+	if c.Permission != nil {
+		if err := c.Permission.Check(); err != nil {
+			return fmt.Errorf("Permission %v", err)
+		}
+	}
+	return nil
+}
+
+func (c PermissionConfig) Check() error {
+	if c.POA != nil && c.POS != nil {
+		return fmt.Errorf("only one of POA or POS may be specified")
+	}
+	if c.POA != nil {
+		if len(c.POA.TrustedNodes) == 0 {
+			return fmt.Errorf("POA.TrustedNodes must contain at least one node")
+		}
+		for _, node := range c.POA.TrustedNodes {
+			if crypto.TokenFromString(node).Equal(crypto.ZeroToken) {
+				return fmt.Errorf("POA.TrustedNodes contains an invalid token")
+			}
+		}
+	}
+	if c.POS != nil {
+		if c.POS.MinimumStake < 1e6 {
+			return fmt.Errorf("POS.MinimumStake must be at least 1M")
+		}
+	}
+	return nil
+}
+
 func (c BreezeConfig) Check() error {
 	if c.GossipPort < 1024 || c.GossipPort > 49151 {
 		return fmt.Errorf("GossipPort must be between 1024 and 49151")
@@ -39,24 +75,6 @@ func (c BreezeConfig) Check() error {
 	}
 	if c.MaxBlockSize < 1e6 {
 		return fmt.Errorf("MaxBlockSize must be at least 1MB")
-	}
-	if c.Permission.POA != nil && c.Permission.POS != nil {
-		return fmt.Errorf("only one of POA or POS may be specified")
-	}
-	if c.Permission.POA != nil {
-		if len(c.Permission.POA.TrustedNodes) == 0 {
-			return fmt.Errorf("POA.TrustedNodes must contain at least one node")
-		}
-		for _, node := range c.Permission.POA.TrustedNodes {
-			if crypto.TokenFromString(node).Equal(crypto.ZeroToken) {
-				return fmt.Errorf("POA.TrustedNodes contains an invalid token")
-			}
-		}
-	}
-	if c.Permission.POS != nil {
-		if c.Permission.POS.MinimumStake < 1e6 {
-			return fmt.Errorf("POS.MinimumStake must be at least 1M")
-		}
 	}
 	return nil
 

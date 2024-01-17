@@ -32,16 +32,11 @@ func TestActionVault(t *testing.T) {
 	if v == nil {
 		t.Fatal("NewActionVault returned nil")
 	}
-	ok := make(chan bool, 2)
 	proposal := &Propose{
-		data:     testAction(),
-		conn:     conn1,
-		response: ok,
+		data: testAction(),
+		conn: conn1,
 	}
 	propose <- proposal
-	if !<-ok {
-		t.Fatal("did not incorporate propose")
-	}
 	v.NextEpoch()
 	time.Sleep(10 * time.Millisecond)
 	if v.clock != 2 {

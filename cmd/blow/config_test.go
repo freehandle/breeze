@@ -75,16 +75,16 @@ func TestConfigParse(t *testing.T) {
 	if c.LogPath != "/var/breeze/log" {
 		t.Error("LogPath field not parsed correctly")
 	}
-	if c.Breeze.GossipPort != 5401 {
+	if c.Network.Breeze.GossipPort != 5401 {
 		t.Error("GossipPort field not parsed correctly")
 	}
-	if c.Breeze.BlocksPort != 5402 {
+	if c.Network.Breeze.BlocksPort != 5402 {
 		t.Error("BlocksPort field not parsed correctly")
 	}
-	if c.Breeze.Permission.POS.MinimumStake != 1000000 {
+	if c.Network.Permission.POS.MinimumStake != 1000000 {
 		t.Error("MinimumStake field not parsed correctly")
 	}
-	if c.Breeze.Permission.POA != nil {
+	if c.Network.Permission.POA != nil {
 		t.Error("POA field not parsed correctly")
 	}
 	if c.Relay.Gateway.Port != 5404 {

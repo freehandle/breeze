@@ -125,7 +125,6 @@ func AssembleCommittee[T TokenComparer](ctx context.Context, peers []TokenAddr, 
 		done <- pool.connected
 		return done
 	}
-
 	listener, err := Listen(fmt.Sprintf("%v:%v", hostname, port))
 	if err != nil {
 		slog.Warn("BuilderCommittee: could not listen on port", "port", port, "error", err)

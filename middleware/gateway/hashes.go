@@ -19,9 +19,8 @@ const (
 )
 
 type Propose struct {
-	data     []byte
-	conn     *socket.SignedConnection
-	response chan bool
+	data []byte
+	conn *socket.SignedConnection
 }
 
 type Pending struct {
@@ -113,7 +112,9 @@ func NewActionVault(ctx context.Context, epoch uint64, actions chan *Propose) *A
 					if !ok {
 						return
 					}
-					data.response <- vault.push(data)
+					if !vault.push(data) {
+						data.conn.Send([]byte{messages.MsgError})
+					}
 				case sealed := <-vault.seal:
 					vault.sealAction(sealed.Action, sealed.Epoch, sealed.BlockHash)
 				case hash := <-vault.commit:
@@ -131,7 +132,9 @@ func NewActionVault(ctx context.Context, epoch uint64, actions chan *Propose) *A
 					if !ok {
 						return
 					}
-					data.response <- vault.push(data)
+					if !vault.push(data) {
+						data.conn.Send([]byte{messages.MsgError})
+					}
 				case sealed := <-vault.seal:
 					vault.sealAction(sealed.Action, sealed.Epoch, sealed.BlockHash)
 				case hash := <-vault.commit:

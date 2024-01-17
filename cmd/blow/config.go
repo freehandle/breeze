@@ -26,7 +26,7 @@ type NodeConfig struct {
 	// OR should be a path to a valid folder with appropriate permissions
 	LogPath string // `json:"logPath"`
 	// Breeze can be left empty for standard POS configuration
-	Breeze config.BreezeConfig // `json:"breeze"`
+	Network *config.NetworkConfig // `json:"breeze"`
 	// Relay can be left empty for standard Relay configuration
 	Relay config.RelayConfig // `json:"relay"`
 	// Genesis can be left empty for standard Genesis configuration
@@ -54,8 +54,10 @@ func (c NodeConfig) Check() error {
 	if err := config.IsValidDir(c.LogPath, "log"); err != nil {
 		return err
 	}
-	if err := c.Breeze.Check(); err != nil {
-		return err
+	if c.Network != nil {
+		if err := c.Network.Check(); err != nil {
+			return err
+		}
 	}
 	if err := c.Relay.Check(); err != nil {
 		return err
@@ -63,20 +65,27 @@ func (c NodeConfig) Check() error {
 	return nil
 }
 
-func CheckGenesisToken(stake crypto.Token, config *NodeConfig) error {
-	if config.Genesis == nil || config.Breeze.Permission.POS == nil {
+func CheckGenesisToken(stake crypto.Token, cfg *NodeConfig) error {
+	if cfg.Genesis == nil || (cfg.Network != nil && cfg.Network.Permission != nil && cfg.Network.Permission.POS == nil) {
 		//no relevance to check balances deposited
 		return nil
 	}
 
+	var minimumStake int
+	if cfg.Network == nil || cfg.Network.Permission == nil {
+		minimumStake = config.StandardPoSConfig.POS.MinimumStake
+	} else {
+		minimumStake = cfg.Network.Permission.POS.MinimumStake
+	}
+
 	deposit := 0
-	for _, wallet := range config.Genesis.Wallets {
+	for _, wallet := range cfg.Genesis.Wallets {
 		token, _, deposit := TokenBalanceAndDeposit(wallet)
 		if token.Equal(stake) {
 			deposit += deposit
 		}
 	}
-	if deposit < config.Breeze.Permission.POS.MinimumStake {
+	if deposit < minimumStake {
 		return errors.New("node deposit is less than minimum stake, cannot start from genesis")
 	}
 	return nil

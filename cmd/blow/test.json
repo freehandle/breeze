@@ -5,7 +5,7 @@
 	"adminPort": 5403,
 	"walletPath": "/var/breeze/wallet",
 	"logPath": "/var/breeze/log",
-	"breeze": {
+	"network": {
 		"permission": {
 			"pos" : {
 				"minimumStake": 1000000

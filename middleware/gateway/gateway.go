@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -61,26 +62,58 @@ func LaunchGateway(ctx context.Context, config Configuration, trusted *socket.Si
 	clock := NewClockSyn(topology.Start, topology.StartAt, config.Breeze.BlockInterval)
 	gateway := Gateway{
 		ctx:              ctx,
-		sync:             clock,
 		config:           config,
+		sync:             clock,
 		liveActionRelays: make([]*socket.SignedConnection, 0),
 		activeFwdPool:    make([]*socket.SignedConnection, 0),
 		store:            NewActionVault(ctx, clock.Epoch, propose),
 	}
+
+	windowReady := LaunchWindow(ctx, config, topology.Start, topology.End, topology.Order, topology.Validators)
 	gateway.feedPool = socket.NewTrustedAgregator(ctx, config.Hostname, config.Credentials, TargetListenerSize, config.Trusted, topology.Validators, trusted)
+	gateway.ready = false
 	go func() {
 		done := ctx.Done()
 		for {
-			select {
-			case <-done:
-				return
-			case <-gateway.sync.Timer.C:
-				gateway.NextBlock()
-			case bytes := <-gateway.store.Pop:
-				gateway.Forward(bytes)
-			case conn := <-gateway.feedPool.Activate:
-				conn.Send([]byte{messages.MsgSubscribeBlockEvents})
+			if !gateway.ready {
+				select {
+				case window := <-windowReady:
+					gateway.currentWindow = window
+					gateway.activeFwdPool = window.GetPool(gateway.sync.Epoch)
+					fmt.Println("Gateway: current window", len(gateway.activeFwdPool))
+					for _, conn := range window.order {
+						isNew := true
+						for _, live := range gateway.liveActionRelays {
+							if live == conn {
+								isNew = false
+								break
+							}
+						}
+						if isNew {
+							gateway.liveActionRelays = append(gateway.liveActionRelays, conn)
+						}
+					}
+					close(windowReady)
+					gateway.ready = true
+					fmt.Println("Gateway: ready")
+				case <-gateway.sync.Timer.C:
+					gateway.NextBlock()
+				case conn := <-gateway.feedPool.Activate:
+					conn.Send([]byte{messages.MsgSubscribeBlockEvents})
+				}
+			} else {
+				select {
+				case <-done:
+					return
+				case <-gateway.sync.Timer.C:
+					gateway.NextBlock()
+				case bytes := <-gateway.store.Pop:
+					gateway.Forward(bytes)
+				case conn := <-gateway.feedPool.Activate:
+					conn.Send([]byte{messages.MsgSubscribeBlockEvents})
+				}
 			}
+
 		}
 	}()
 }
@@ -92,6 +125,7 @@ func (g *Gateway) Forward(data []byte) {
 	}
 	for _, conn := range g.activeFwdPool {
 		if conn.Live {
+			fmt.Println("Gateway: Forwarding to", conn.Address, conn.Token)
 			if err := conn.Send(data); err != nil {
 				conn.Live = false
 			}
@@ -102,6 +136,7 @@ func (g *Gateway) Forward(data []byte) {
 func (g *Gateway) NextBlock() {
 	g.sync.reset()
 	g.store.NextEpoch()
+	slog.Info("Gateway: NextBlock called", "clock", g.sync.Epoch)
 	if !g.ready || g.currentWindow == nil {
 		return
 	}

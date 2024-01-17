@@ -82,6 +82,11 @@ type POSConfig struct {
 	MinimumStake int // `json:"minimumStake"`
 }
 
+type NetworkConfig struct {
+	Permission *PermissionConfig // `json:"permission"`
+	Breeze     *BreezeConfig     // `json:"breeze"`
+}
+
 // BreezeConfig is the configuration for parameters defining the Breeze protocol
 type BreezeConfig struct {
 	// Port for gossip network connections
@@ -89,9 +94,6 @@ type BreezeConfig struct {
 	// Port for block broadcast connections
 	BlocksPort int // `json:"blocksPort"`
 	// Permission: POS or POA configs
-	Permission PermissionConfig // `json:"permission"`
-	// BlockInterval is the number of milliseconds between blocks. At minimum
-	// this should be 500ms
 	BlockInterval int // `json:"blockInterval"`
 	// ChecksumWindowBlocks is the number of blocks to use for the checksum
 	// window. Checksum window must be at least 10 seconds worth of blocks.
@@ -164,14 +166,9 @@ var StandardSwellConfig = SwellConfig{
 	CommitTimeout:  1500,
 }
 
-var StandardPOSBreezeConfig = BreezeConfig{
-	GossipPort: 5401,
-	BlocksPort: 5402,
-	Permission: PermissionConfig{
-		POS: &POSConfig{
-			MinimumStake: 1e6,
-		},
-	},
+var StandardBreezeConfig = &BreezeConfig{
+	GossipPort:            5401,
+	BlocksPort:            5402,
 	BlockInterval:         1000,
 	ChecksumWindowBlocks:  900,
 	ChecksumCommitteeSize: 100,
@@ -179,20 +176,25 @@ var StandardPOSBreezeConfig = BreezeConfig{
 	Swell:                 StandardSwellConfig,
 }
 
-func StandardPOABreezeConfig(authority crypto.Token) BreezeConfig {
-	return BreezeConfig{
-		GossipPort: 5401,
-		BlocksPort: 5402,
-		Permission: PermissionConfig{
+var StandardPoSConfig = &PermissionConfig{
+	POS: &POSConfig{
+		MinimumStake: 1e6,
+	},
+}
+
+var StandardBreezeNetworkConfig = &NetworkConfig{
+	Breeze:     StandardBreezeConfig,
+	Permission: StandardPoSConfig,
+}
+
+func StandardPOABreezeConfig(authority crypto.Token) NetworkConfig {
+	return NetworkConfig{
+		Breeze: StandardBreezeConfig,
+		Permission: &PermissionConfig{
 			POA: &POAConfig{
 				TrustedNodes: []string{authority.String()},
 			},
 		},
-		BlockInterval:         1000,
-		ChecksumWindowBlocks:  900,
-		ChecksumCommitteeSize: 100,
-		MaxBlockSize:          1e9,
-		Swell:                 StandardSwellConfig,
 	}
 }
 

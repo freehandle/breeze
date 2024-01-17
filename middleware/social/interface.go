@@ -13,10 +13,17 @@ type Blocker[T Merger[T]] interface {
 	Mutations() T
 }
 
+type Validator interface {
+	Validate([]byte) bool
+}
+
 type Stateful[T Merger[T], B Blocker[T]] interface {
 	Validator(...T) B
 	Incorporate(T)
 	Shutdown()
-	ChecksumPoint() crypto.Hash
-	Recover() error
+	Checksum() crypto.Hash
+	Clone() chan Stateful[T, B]
+	Serialize() []byte
 }
+
+type StateFromBytes[T Merger[T], B Blocker[T]] func([]byte) (Stateful[T, B], bool)

@@ -26,13 +26,22 @@ func main() {
 		fmt.Println(usage)
 		os.Exit(1)
 	}
-	config, err := config.LoadConfig[NodeConfig](os.Args[1])
+	cfg, err := config.LoadConfig[NodeConfig](os.Args[1])
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
+	if cfg.Network == nil {
+		cfg.Network = config.StandardBreezeNetworkConfig
+	}
+	if cfg.Network.Breeze == nil {
+		cfg.Network.Breeze = config.StandardBreezeConfig
+	}
+	if cfg.Network.Permission == nil {
+		cfg.Network.Permission = config.StandardPoSConfig
+	}
 
-	log := filepath.Join(config.LogPath, fmt.Sprintf("%v.log", config.Token[0:16]))
+	log := filepath.Join(cfg.LogPath, fmt.Sprintf("%v.log", cfg.Token[0:16]))
 
 	logFile, err := os.OpenFile(log, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
@@ -44,8 +53,8 @@ func main() {
 	logger := slog.NewTextHandler(logFile, &slog.HandlerOptions{Level: programLevel})
 	slog.SetDefault(slog.New(logger))
 
-	swellConfig := SwellConfigFromConfig(config)
-	relay, err := RelayFromConfig(ctx, config, crypto.ZeroPrivateKey)
+	swellConfig := SwellConfigFromConfig(cfg)
+	relay, err := RelayFromConfig(ctx, cfg, crypto.ZeroPrivateKey)
 	if err != nil {
 		cancel()
 		fmt.Printf("could not open relay ports: %v\n", err)
@@ -53,7 +62,7 @@ func main() {
 	}
 	if os.Args[2] == "genesis" {
 		fmt.Println("creating genesis node")
-		admin, pk := WaitForKeysSync(ctx, config)
+		admin, pk := WaitForKeysSync(ctx, cfg)
 		if admin == nil {
 			cancel()
 			fmt.Println("canceled")
@@ -62,11 +71,11 @@ func main() {
 
 		validatorConfig := swell.ValidatorConfig{
 			Credentials:    pk,
-			WalletPath:     config.WalletPath,
+			WalletPath:     cfg.WalletPath,
 			SwellConfig:    swellConfig,
 			Relay:          relay,
 			Admin:          admin,
-			TrustedGateway: TokenAddrArrayFromPeeers(config.TrustedNodes),
+			TrustedGateway: TokenAddrArrayFromPeeers(cfg.TrustedNodes),
 		}
 		swell.NewGenesisNode(ctx, pk, validatorConfig)
 		return
@@ -83,14 +92,14 @@ func main() {
 			fmt.Printf("invalid token: %v\n%v\n", os.Args[4], usage)
 			os.Exit(1)
 		}
-		admin, pk := WaitForKeysSync(ctx, config)
+		admin, pk := WaitForKeysSync(ctx, cfg)
 		validatorConfig := swell.ValidatorConfig{
 			Credentials:    pk,
-			WalletPath:     config.WalletPath,
+			WalletPath:     cfg.WalletPath,
 			SwellConfig:    swellConfig,
 			Relay:          relay,
 			Admin:          admin,
-			TrustedGateway: TokenAddrArrayFromPeeers(config.TrustedNodes),
+			TrustedGateway: TokenAddrArrayFromPeeers(cfg.TrustedNodes),
 		}
 		if admin == nil {
 			cancel()
@@ -153,15 +162,16 @@ func RelayFromConfig(ctx context.Context, config *NodeConfig, pk crypto.PrivateK
 	return relay.Run(ctx, relayConfig)
 }
 
-func SwellConfigFromConfig(config *NodeConfig) swell.SwellNetworkConfiguration {
+func SwellConfigFromConfig(cfg *NodeConfig) swell.SwellNetworkConfiguration {
+
 	swell := swell.SwellNetworkConfiguration{
-		NetworkHash:      crypto.Hasher([]byte(config.Genesis.NetworkID)),
-		MaxPoolSize:      config.Breeze.Swell.CommitteeSize,
-		MaxCommitteeSize: config.Breeze.ChecksumCommitteeSize,
-		BlockInterval:    time.Duration(config.Breeze.BlockInterval) * time.Millisecond,
-		ChecksumWindow:   config.Breeze.ChecksumWindowBlocks,
+		NetworkHash:      crypto.Hasher([]byte(cfg.Genesis.NetworkID)),
+		MaxPoolSize:      cfg.Network.Breeze.Swell.CommitteeSize,
+		MaxCommitteeSize: cfg.Network.Breeze.ChecksumCommitteeSize,
+		BlockInterval:    time.Duration(cfg.Network.Breeze.BlockInterval) * time.Millisecond,
+		ChecksumWindow:   cfg.Network.Breeze.ChecksumWindowBlocks,
 	}
-	if poa := config.Breeze.Permission.POA; poa != nil {
+	if poa := cfg.Network.Permission.POA; poa != nil {
 		tokens := make([]crypto.Token, 0)
 		for _, trusted := range poa.TrustedNodes {
 			var token crypto.Token
@@ -171,7 +181,7 @@ func SwellConfigFromConfig(config *NodeConfig) swell.SwellNetworkConfiguration {
 			}
 		}
 		swell.Permission = permission.NewProofOfAuthority(tokens...)
-	} else if pos := config.Breeze.Permission.POS; pos != nil {
+	} else if pos := cfg.Network.Permission.POS; pos != nil {
 		swell.Permission = &permission.ProofOfStake{MinimumStage: uint64(pos.MinimumStake)}
 	} else {
 		swell.Permission = permission.Permissionless{}

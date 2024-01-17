@@ -40,6 +40,10 @@ func (t *TrustedAggregator) Read() ([]byte, error) {
 	return t.aggregator.Read()
 }
 
+func (t *TrustedAggregator) Shutdown() {
+	t.aggregator.Shutdown()
+}
+
 func NewTrustedAgregator(ctx context.Context, hostname string, credentials crypto.PrivateKey, size int, trusted, available []TokenAddr, connections ...*SignedConnection) *TrustedAggregator {
 	trst := TrustedAggregator{
 		trusty:     trusted,

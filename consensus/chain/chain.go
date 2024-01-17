@@ -58,6 +58,13 @@ type ClockSyncronization struct {
 	TimeStamp time.Time
 }
 
+func (c ClockSyncronization) Timer(d time.Duration) time.Duration {
+	now := time.Now()
+	cycles := now.Sub(c.TimeStamp) / d
+	nextCycle := c.TimeStamp.Add((cycles + 1) * d)
+	return time.Until(nextCycle)
+}
+
 // Blockchain is the main data structure for the breeze network. It contains the
 // state of the system at the last commit and the sealed uncommited blocks.
 type Blockchain struct {

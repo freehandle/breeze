@@ -1,7 +1,9 @@
 package social
 
 import (
+	"context"
 	"log"
+	"log/slog"
 
 	"github.com/freehandle/breeze/consensus/chain"
 	"github.com/freehandle/breeze/consensus/messages"
@@ -38,193 +40,141 @@ type Node struct {
 	Token   crypto.Token
 }
 
-func SocialProtocolBlockListener(address string, node crypto.Token, credentials crypto.PrivateKey, epoch uint64) chan *ProtocolBlock {
-	send := make(chan *ProtocolBlock, 2)
-	conn, err := socket.Dial("localhost", address, credentials, node)
-	if err != nil {
-		log.Printf("SocialProtocolBlockListener: could not connect to %v: %v", address, err)
-		send <- nil
-		return send
-	}
-	if err := conn.Send(NewSyncRequest(epoch)); err != nil {
-		log.Printf("SocialProtocolBlockListener: could not send to %v: %v", address, err)
-		send <- nil
-		return send
-	}
-	go func() {
-		blocks := make(map[uint64]*ProtocolBlock)
-		defer conn.Shutdown()
-		var current *ProtocolBlock
-		for {
-			data, err := conn.Read()
-			if err != nil {
-				log.Printf("SocialProtocolBlockListener: could not read from connection: %v", err)
-				send <- nil
-				return
-			}
-			switch data[0] {
-			case messages.MsgNewBlock:
-				epoch, err := ParseNewBlockSocial(data)
-				if err != nil {
-					log.Printf("SocialProtocolBlockListener: could not parse message: %v", err)
-					send <- nil
-					return
-				}
-				current = &ProtocolBlock{
-					Epoch:   epoch,
-					Actions: make([][]byte, 0),
-				}
-				blocks[epoch] = current
-			case messages.MsgAction:
-				if current == nil {
-					log.Print("SocialProtocolBlockListener: messages out of order: action before new block signal")
-					send <- nil
-					return
-				}
-				current.Actions = append(current.Actions, data[1:])
-			case messages.MsgSealedBlock:
-				epoch, hash, err := ParseSealBlockSocial(data)
-				if err != nil {
-					log.Printf("SocialProtocolBlockListener: could not parse message: %v", err)
-					send <- nil
-					return
-				}
-				if current.Epoch == epoch {
-					current = nil // no actions after seal
-				}
-				if block, ok := blocks[epoch]; ok {
-					block.Hash = hash
-				} else {
-					log.Printf("SocialProtocolBlockListener: sealed unkown block: %v", epoch)
-					send <- nil
-					return
-				}
-			case messages.MsgCommittedBlock:
-				epoch, invalidated, err := ParseCommitBlockSocial(data)
-				if err != nil {
-					log.Printf("SocialProtocolBlockListener: could not parse message: %v", err)
-				}
-				if block, ok := blocks[epoch]; ok {
-					block.Invalidated = invalidated
-					send <- block
-					delete(blocks, epoch)
-				} else {
-					log.Printf("SocialProtocolBlockListener: commit unkown block: %v", epoch)
-					send <- nil
-					return
-				}
-			}
-		}
-	}()
-	return send
+type socialListener struct {
+	blocks  chan *SocialBlock
+	commits chan *SocialBlockCommit
+	code    uint32
 }
 
-// Connects to a node providing breeze new blocks and forward signals to the channel
-func BreezeBlockListener(config ProtocolValidatorNodeConfig, epoch uint64) chan *BlockSignal {
-	send := make(chan *BlockSignal)
-	conn, err := socket.Dial("localhost", config.BlockProviderAddr, config.NodeCredentials, config.BlockProviderToken)
-	if err != nil {
-		signal := &BlockSignal{Signal: ErrSignal, Err: err}
-		send <- signal
-		return send
+func (s *socialListener) Apply(msg []byte) {
+	switch msg[0] {
+	case messages.MsgProtocolBlock:
+		if block := ParseSocialBlock(msg[1:]); block != nil {
+			s.blocks <- block
+		}
+	case messages.MsgProtocolBlockCommit:
+		if commit := ParseSocialBlockCommit(msg[1:]); commit != nil {
+			s.commits <- commit
+		}
 	}
-	go func() {
-		conn.Send(messages.SyncMessage(epoch))
-		for {
-			msg, err := conn.Read()
-			if err != nil {
-				signal := &BlockSignal{Signal: ErrSignal, Err: err}
-				send <- signal
+}
+
+func (s *socialListener) Subscribe() []byte {
+	bytes := []byte{messages.MsgProtocolSubscribe}
+	util.PutUint32(s.code, &bytes)
+	return bytes
+}
+
+func (s *socialListener) Close() {
+	close(s.blocks)
+	close(s.commits)
+}
+
+type breezeListener struct {
+	blocks  chan *SocialBlock
+	commits chan *SocialBlockCommit
+	code    uint32
+}
+
+func (b *breezeListener) Apply(msg []byte) {
+	switch msg[0] {
+	case messages.MsgSealedBlock:
+		sealed := chain.ParseSealedBlock(msg[1:])
+		if sealed != nil {
+			social := BreezeSealedBlockToSocialBlock(sealed)
+			if social == nil {
+				slog.Error("BreezeBlockListener: return nil")
 				return
 			}
-			switch msg[0] {
-			case messages.MsgAction:
-				signal := &BlockSignal{Signal: ActionSignal, Action: msg[1:]}
-				send <- signal
-			case messages.MsgNewBlock:
-				header := chain.ParseBlockHeader(msg[1:])
-				if header != nil {
-					signal := &BlockSignal{
-						Signal:     NewBlockSignal,
-						Epoch:      header.Epoch,
-						Checkpoint: header.CheckPoint,
-						Hash:       header.CheckpointHash,
-						Token:      header.Proposer,
-					}
-					send <- signal
-				}
-			case messages.MsgSeal:
-				if len(msg) > 9 {
-					signal := &BlockSignal{
-						Signal: SealSignal,
-					}
-					signal.Epoch, _ = util.ParseUint64(msg, 1)
-					seal := chain.ParseBlockSeal(msg[9:])
-					if seal != nil {
-						signal.Hash = seal.Hash
-						signal.Signature = seal.SealSignature
-						send <- signal
-					}
-				}
-			case messages.MsgCommit:
-				if len(msg) > 9 {
-					signal := &BlockSignal{
-						Signal: CommitSignal,
-					}
-					signal.Epoch, _ = util.ParseUint64(msg, 1)
-					commit := chain.ParseBlockCommit(msg[9:])
-					if commit != nil {
-						signal.HashArray = commit.Invalidated
-						signal.Token = commit.PublishedBy
-						signal.Signature = commit.PublishSign
-						send <- signal
-					}
-				}
-			case messages.MsgCommittedBlock:
-				block := chain.ParseCommitBlock(msg[1:])
-				if block != nil {
-					signal := &BlockSignal{
-						Signal: NewBlockSignal,
-					}
-					signal.Epoch = block.Header.Epoch
-					signal.Checkpoint = block.Header.CheckPoint
-					signal.Hash = block.Header.CheckpointHash
-					signal.Token = block.Header.Proposer
-					send <- signal
-					signal.Signal = ActionArraySignal
-					signal.Actions = block.Actions
-					send <- signal
-					signal.Signal = SealSignal
-					signal.Hash = block.Seal.Hash
-					signal.Signature = block.Seal.SealSignature
-					send <- signal
-					signal.Signal = CommitSignal
-					signal.HashArray = block.Commit.Invalidated
-					signal.Token = block.Commit.PublishedBy
-					signal.Signature = block.Commit.PublishSign
-					send <- signal
-				}
-			case messages.MsgSealedBlock:
-				block := chain.ParseSealedBlock(msg[1:])
-				if block != nil {
-					signal := &BlockSignal{
-						Signal: NewBlockSignal,
-					}
-					signal.Epoch = block.Header.Epoch
-					signal.Checkpoint = block.Header.CheckPoint
-					signal.Hash = block.Header.CheckpointHash
-					signal.Token = block.Header.Proposer
-					send <- signal
-					signal.Signal = ActionArraySignal
-					signal.Actions = block.Actions
-					send <- signal
-					signal.Signal = SealSignal
-					signal.Hash = block.Seal.Hash
-					signal.Signature = block.Seal.SealSignature
-					send <- signal
-				}
+			b.blocks <- social
+		}
+	case messages.MsgCommit:
+		epoch, hash, bytes := messages.ParseEpochAndHash(msg[1:])
+		commit := chain.ParseBlockCommit(bytes)
+		if commit == nil {
+			return
+		}
+		social := &SocialBlockCommit{
+			ProtocolCode:    b.code,
+			Epoch:           epoch,
+			Publisher:       commit.PublishedBy,
+			SealHash:        hash,
+			Invalidated:     commit.Invalidated,
+			CommitHash:      hash,
+			CommitSignature: commit.PublishSign,
+		}
+		b.commits <- social
+
+	case messages.MsgCommittedBlock:
+		committed := chain.ParseCommitBlock(msg[1:])
+		if committed != nil {
+			social := BreezeComiittedBlockToSocialBlock(committed)
+			if social == nil {
+				slog.Error("BreezeComiittedBlockToSocialBlock: return nil")
+				return
+			}
+			b.blocks <- social
+		}
+	}
+}
+
+func (b *breezeListener) Subscribe() []byte {
+	return []byte{messages.MsgSubscribeBlockEvents}
+}
+
+func (b *breezeListener) Close() {
+	close(b.blocks)
+	close(b.commits)
+}
+
+type listener interface {
+	Apply([]byte)
+	Subscribe() []byte
+	Close()
+}
+
+func SocialProtocolBlockListener(ctx context.Context, cfg Configuration, sources *socket.TrustedAggregator, blocks chan *SocialBlock, commits chan *SocialBlockCommit) {
+	var listener listener
+	if cfg.ParentProtocolCode == 0 {
+		listener = &breezeListener{
+			blocks:  blocks,
+			commits: commits,
+		}
+	} else {
+		listener = &socialListener{
+			blocks:  blocks,
+			commits: commits,
+			code:    cfg.ParentProtocolCode,
+		}
+	}
+	withCancel, cancel := context.WithCancel(ctx)
+
+	go func() {
+		for {
+			data, err := sources.Read()
+			if err != nil {
+				log.Printf("SocialProtocolBlockListener: could not read from connection: %v", err)
+				listener.Close()
+				cancel()
+				return
+			}
+			if len(data) > 0 {
+				listener.Apply(data)
 			}
 		}
 	}()
-	return send
+
+	go func() {
+		defer sources.Shutdown()
+		done := withCancel.Done()
+		for {
+			select {
+			case <-done:
+				return
+			case conn := <-sources.Activate:
+				bytes := listener.Subscribe()
+				conn.Send(bytes)
+			}
+		}
+	}()
 }

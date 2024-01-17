@@ -3,9 +3,12 @@ package socket
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"sync"
 	"time"
+
+	"github.com/freehandle/breeze/crypto"
 )
 
 // testAddr implemnets a Network interface for testing purposes
@@ -262,4 +265,37 @@ func (n *testNetwork) AddNode(hostname string, Reliability float64, Latency time
 // is 100% reliable.
 func (n *testNetwork) AddReliableNode(address string, Latency time.Duration, MaxThroughput int) {
 	n.AddNode(address, 1, Latency, MaxThroughput)
+}
+
+func CreateConnectionPair(node string, port int) (*SignedConnection, *SignedConnection) {
+	n1 := fmt.Sprintf("%s%d", node, 1)
+	n2 := fmt.Sprintf("%s%d", node, 2)
+	TCPNetworkTest.AddNode(n1, 1, 50*time.Millisecond, 1e9)
+	TCPNetworkTest.AddNode(n2, 1, 20*time.Millisecond, 1e9)
+	p1 := fmt.Sprintf("%s%d:%d", node, 1, port)
+	_, pk1 := crypto.RandomAsymetricKey()
+	_, pk2 := crypto.RandomAsymetricKey()
+	done := make(chan *SignedConnection)
+	go func() {
+		lister, err := Listen(p1)
+		if err != nil {
+			panic(err)
+		}
+		conn, err := lister.Accept()
+		if err != nil {
+			panic(err)
+		}
+		trusted, err := PromoteConnection(conn, pk1, AcceptAllConnections)
+		if err != nil {
+			panic(err)
+		}
+		done <- trusted
+	}()
+	time.Sleep(100 * time.Millisecond)
+	conn2, err := Dial(n2, p1, pk2, pk1.PublicKey())
+	if err != nil {
+		panic(err)
+	}
+	conn1 := <-done
+	return conn1, conn2
 }
