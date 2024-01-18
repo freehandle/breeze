@@ -6,10 +6,10 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/freehandle/breeze/consensus/admin"
 	"github.com/freehandle/breeze/consensus/chain"
 	"github.com/freehandle/breeze/consensus/swell"
 	"github.com/freehandle/breeze/crypto"
+	"github.com/freehandle/breeze/middleware/admin"
 	"github.com/freehandle/breeze/middleware/blockdb"
 	"github.com/freehandle/breeze/socket"
 )
@@ -86,15 +86,13 @@ func NewListener(ctx context.Context, adm *admin.Administration, config Listener
 			select {
 			case <-ctx.Done():
 				return
-			case firewall := <-adm.FirewallAction:
-				if firewall.Scope == admin.GrantBlockListener {
-					listener.firewall.Add(firewall.Token)
-				} else if firewall.Scope == admin.RevokeBlockListener {
-					listener.firewall.Remove(firewall.Token)
+			case instruction := <-adm.Interaction:
+				if instruction.Request[0] == admin.MsgShutdown {
+					cancel()
+					instruction.Response <- []byte("shutting down")
+				} else {
+					instruction.Response <- []byte{}
 				}
-			case activation := <-adm.Activation:
-				// there is no activation for a block listener
-				activation.Response <- false
 			}
 		}
 

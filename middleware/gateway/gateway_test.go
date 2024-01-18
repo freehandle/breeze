@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/freehandle/breeze/consensus/admin"
 	"github.com/freehandle/breeze/consensus/messages"
 	"github.com/freehandle/breeze/crypto"
+	"github.com/freehandle/breeze/middleware/admin"
 	"github.com/freehandle/breeze/middleware/config"
 	"github.com/freehandle/breeze/socket"
 )
@@ -65,8 +65,7 @@ func TestGateway(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	adm := admin.Administration{
-		FirewallAction: make(chan admin.FirewallAction),
-		Status:         make(chan chan string),
+		Interaction: make(chan admin.Interaction),
 	}
 
 	go func() {

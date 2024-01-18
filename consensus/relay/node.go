@@ -14,7 +14,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/freehandle/breeze/consensus/admin"
 	"github.com/freehandle/breeze/consensus/messages"
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/socket"
@@ -64,7 +63,6 @@ type Node struct {
 	SyncRequest        chan SyncRequest              // sends sync requests to swell engine
 	TopologyRequest    chan *socket.SignedConnection // sends request for topology
 	Statement          chan []byte
-	Firewall           chan admin.FirewallAction
 	config             *Config
 	gatewayConnections map[crypto.Token]*socket.SignedConnection
 	pool               socket.ConnectionPool
@@ -111,7 +109,6 @@ func Run(ctx context.Context, cfg Config) (*Node, error) {
 		BlockEvents:     make(chan []byte),
 		SyncRequest:     make(chan SyncRequest),
 		TopologyRequest: make(chan *socket.SignedConnection),
-		Firewall:        make(chan admin.FirewallAction),
 		config:          &cfg,
 	}
 
@@ -184,16 +181,6 @@ func Run(ctx context.Context, cfg Config) (*Node, error) {
 				}
 			case token := <-dropConnection:
 				n.pool.Drop(token)
-			case action := <-n.Firewall:
-				if action.Scope == admin.GrantGateway {
-					n.config.Firewall.AcceptGateway.Add(action.Token)
-				} else if action.Scope == admin.RevokeGateway {
-					n.config.Firewall.AcceptGateway.Remove(action.Token)
-				} else if action.Scope == admin.GrantBlockListener {
-					n.config.Firewall.AcceptBlockListener.Add(action.Token)
-				} else if action.Scope == admin.RevokeBlockListener {
-					n.config.Firewall.AcceptBlockListener.Remove(action.Token)
-				}
 			}
 		}
 	}()

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/freehandle/breeze/crypto"
+	"github.com/freehandle/breeze/middleware/admin"
 	"github.com/freehandle/breeze/middleware/config"
 	"github.com/freehandle/breeze/middleware/gateway"
 )
@@ -58,6 +59,10 @@ func main() {
 	}
 
 	node := crypto.TokenFromString(cfg.Token)
+	wallet := crypto.TokenFromString(cfg.Wallet)
+	if wallet.Equal(crypto.ZeroToken) {
+		wallet = node
+	}
 
 	if cfg.LogPath != "" {
 		log := filepath.Join(cfg.LogPath, fmt.Sprintf("%v.log", cfg.Token[0:16]))
@@ -74,22 +79,49 @@ func main() {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	admin, pk := config.WaitForKeysSync(ctx, node, cfg.AdminPort)
+	defer cancel()
+	tokens := []crypto.Token{node}
+	if !wallet.Equal(node) {
+		tokens = append(tokens, wallet)
+	}
 
-	gateway.NewServer(ctx, configToGatewayConfig(*cfg, pk, pk), admin)
+	keys := config.WaitForRemoteKeysSync(ctx, tokens, "localhost", cfg.AdminPort)
+
+	nodeSecret := keys[node]
+	walletSecret := keys[wallet]
+
+	if !nodeSecret.PublicKey().Equal(node) {
+		fmt.Println("node secret key is not valid")
+		os.Exit(1)
+	}
+	if !walletSecret.PublicKey().Equal(wallet) {
+		fmt.Println("wallet secret key is not valid")
+		os.Exit(1)
+	}
+	gatewayCfg := configToGatewayConfig(*cfg, nodeSecret, walletSecret)
+
+	adm, err := admin.OpenAdminPort(ctx, "localhost", nodeSecret, cfg.AdminPort, gatewayCfg.Firewall, gatewayCfg.Firewall)
+	if err != nil {
+		fmt.Printf("could not open admin port: %v\n", err)
+		cancel()
+		os.Exit(1)
+	}
+
+	gateway.NewServer(ctx, gatewayCfg, adm)
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 
 	for {
+		done := ctx.Done()
 		select {
+		case <-done:
+			return
 		case <-c:
-			cancel()
-		case activation := <-admin.Activation:
-			if !activation.Active {
-				slog.Info("beat: received deactivation")
-				cancel()
+			return
+		case instruction := <-adm.Interaction:
+			if len(instruction.Request) == 2 && instruction.Request[0] == admin.MsgActivation && instruction.Request[1] == 1 {
+				return
 			}
 		}
 	}
-	slog.Info("service terminated")
 }

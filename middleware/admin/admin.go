@@ -26,11 +26,13 @@ const (
 )
 
 const (
-	RequestStatus byte = iota
+	Instruction byte = iota
+	MsgAdminReport
+	MsgActivation
+	MsgShutdown
 	EphemeralKey
 	DiffieHellman
 	FirewallInstruction
-	ActivityInstruction
 	InvalidKey
 	StatusOk
 	StatusErr
@@ -67,19 +69,24 @@ func (a FirewallAction) Gateway() bool {
 	return a.Scope == GrantGateway || a.Scope == RevokeGateway
 }
 
+type Interaction struct {
+	Request  []byte
+	Response chan []byte
+}
+
 type Administration struct {
-	mu             sync.Mutex
-	Hostname       string
-	Firewall       socket.ValidateConnection
-	Secret         crypto.PrivateKey
-	Port           int
-	Status         chan chan string
-	Activation     chan Activation
-	FirewallAction chan FirewallAction
-	live           map[*socket.SignedConnection]struct{}
-	diffieHellman  chan crypto.PrivateKey
-	hasSyncedKey   bool
-	isRunning      bool
+	mu              sync.Mutex
+	Hostname        string
+	AdmFirewall     *socket.AcceptValidConnections
+	Secret          crypto.PrivateKey
+	Port            int
+	Interaction     chan Interaction
+	GatewayFirewall *socket.AcceptValidConnections
+	BlockFirewall   *socket.AcceptValidConnections
+	live            map[*socket.SignedConnection]struct{}
+	diffieHellman   chan crypto.PrivateKey
+	hasSyncedKey    bool
+	isRunning       bool
 }
 
 func (a *Administration) WaitForKeys(ctx context.Context, token crypto.Token) (crypto.PrivateKey, error) {
@@ -97,6 +104,24 @@ func (a *Administration) WaitForKeys(ctx context.Context, token crypto.Token) (c
 	return crypto.ZeroPrivateKey, errors.New("could not retrieve valid secret key")
 }
 
+func OpenAdminPort(ctx context.Context, hostname string, credentials crypto.PrivateKey, port int, gateway, blocks *socket.AcceptValidConnections) (*Administration, error) {
+	adm := &Administration{
+		Hostname:        hostname,
+		AdmFirewall:     socket.NewValidConnections([]crypto.Token{credentials.PublicKey()}, false),
+		Secret:          credentials,
+		Port:            port,
+		Interaction:     make(chan Interaction),
+		GatewayFirewall: socket.NewValidConnections([]crypto.Token{}, false),
+		BlockFirewall:   socket.NewValidConnections([]crypto.Token{}, false),
+		live:            make(map[*socket.SignedConnection]struct{}),
+	}
+	err := adm.RunServer(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return adm, nil
+}
+
 func (a *Administration) RunServer(ctx context.Context) error {
 	a.live = make(map[*socket.SignedConnection]struct{})
 	listener, err := socket.Listen(fmt.Sprintf("%s:%v", a.Hostname, a.Port))
@@ -112,7 +137,7 @@ func (a *Administration) RunServer(ctx context.Context) error {
 				cancel()
 				return
 			}
-			trusted, err := socket.PromoteConnection(conn, a.Secret, a.Firewall)
+			trusted, err := socket.PromoteConnection(conn, a.Secret, a.AdmFirewall)
 			if err != nil {
 				slog.Info("admin connection rejected", "error", err, "token", a.Secret.PublicKey())
 				continue
@@ -156,18 +181,17 @@ func (a *Administration) Panel(conn *socket.SignedConnection) {
 			continue
 		}
 		switch data[0] {
-		case RequestStatus:
-			status := make(chan string)
-			a.Status <- status
-			response := <-status
-			var bytes []byte
-			if response != "" {
-				bytes = append([]byte{StatusOk}, []byte(response)...)
-			} else {
-				bytes = []byte{StatusErr}
+		case Instruction:
+			response := make(chan []byte)
+			a.Interaction <- Interaction{
+				Request:  data[1:],
+				Response: response,
 			}
-			if err := conn.Send(bytes); err != nil {
-				return
+			resp := <-response
+			if len(resp) == 0 {
+				conn.Send([]byte{StatusErr})
+			} else {
+				conn.Send(append([]byte{StatusOk}, resp...))
 			}
 		case DiffieHellman:
 			if a.hasSyncedKey {
@@ -201,23 +225,20 @@ func (a *Administration) Panel(conn *socket.SignedConnection) {
 			a.hasSyncedKey = true
 			a.isRunning = true
 		case FirewallInstruction:
+			ok := true
 			action := ParseFirewallActionMessage(data)
-			if action.Scope != InvalidScope {
-				a.FirewallAction <- action
-			} else {
-				conn.Send([]byte{StatusErr})
+			switch action.Scope {
+			case GrantGateway:
+				a.GatewayFirewall.Add(action.Token)
+			case RevokeGateway:
+				a.GatewayFirewall.Remove(action.Token)
+			case GrantBlockListener:
+				a.BlockFirewall.Add(action.Token)
+			case RevokeBlockListener:
+				a.BlockFirewall.Remove(action.Token)
+			default:
+				ok = false
 			}
-		case ActivityInstruction:
-			if len(data) < 2 {
-				conn.Send([]byte{StatusErr})
-				continue
-			}
-			response := make(chan bool)
-			a.Activation <- Activation{
-				Active:   data[1] == 1,
-				Response: response,
-			}
-			ok := <-response
 			if ok {
 				conn.Send([]byte{StatusOk})
 			} else {

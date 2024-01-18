@@ -38,7 +38,7 @@ func DialAdmin(hostname string, node socket.TokenAddr, credential crypto.Private
 }
 
 func (a *AdminClient) Status() (string, error) {
-	if err := a.conn.Send([]byte{RequestStatus}); err != nil {
+	if err := a.conn.Send([]byte{MsgAdminReport}); err != nil {
 		return "", err
 	}
 	data, err := a.conn.Read()
@@ -85,9 +85,9 @@ func (a *AdminClient) FirewallAction(scope byte, token crypto.Token) error {
 }
 
 func (a *AdminClient) Activity(candidate bool) error {
-	msg := []byte{ActivityInstruction, 0}
+	msg := []byte{Instruction, MsgActivation, 0}
 	if candidate {
-		msg[1] = 1
+		msg[2] = 1
 	}
 	if err := a.conn.Send(msg); err != nil {
 		return err

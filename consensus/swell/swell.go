@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/freehandle/breeze/consensus/admin"
 	"github.com/freehandle/breeze/consensus/bft"
 	"github.com/freehandle/breeze/consensus/chain"
 	"github.com/freehandle/breeze/consensus/messages"
 	"github.com/freehandle/breeze/consensus/relay"
 	"github.com/freehandle/breeze/consensus/store"
 	"github.com/freehandle/breeze/crypto"
+	"github.com/freehandle/breeze/middleware/admin"
 	"github.com/freehandle/breeze/socket"
 	"github.com/freehandle/breeze/util"
 )
@@ -163,8 +163,12 @@ func (s *SwellNode) AdminReport() string {
 func (s *SwellNode) ServeAdmin(ctx context.Context) {
 	for {
 		select {
-		case req := <-s.admin.Status:
-			req <- s.AdminReport()
+		case req := <-s.admin.Interaction:
+			if req.Request[0] == admin.MsgAdminReport {
+				req.Response <- []byte(s.AdminReport())
+			} else {
+
+			}
 		case <-ctx.Done():
 			return
 		}

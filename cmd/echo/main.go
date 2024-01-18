@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/freehandle/breeze/crypto"
+	"github.com/freehandle/breeze/middleware/admin"
 	"github.com/freehandle/breeze/middleware/blockdb"
 	"github.com/freehandle/breeze/middleware/blocks"
 	"github.com/freehandle/breeze/middleware/config"
@@ -98,8 +99,23 @@ func main() {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	admin, pk := config.WaitForKeysSync(ctx, node, cfg.AdminPort)
-	blocks.NewListener(ctx, admin, configToListenerConfig(*cfg, pk))
+	secrets := config.WaitForRemoteKeysSync(ctx, []crypto.Token{node}, "localhost", cfg.AdminPort)
+	var pk crypto.PrivateKey
+	if secret, ok := secrets[node]; !ok {
+		fmt.Println("Key sync failed, exiting")
+		cancel()
+		os.Exit(1)
+	} else {
+		pk = secret
+	}
+	listenerCfg := configToListenerConfig(*cfg, pk)
+	adm, err := admin.OpenAdminPort(ctx, "localhost", pk, cfg.AdminPort, nil, listenerCfg.Firewall)
+	if err != nil {
+		fmt.Printf("could not open admin port: %v\n", err)
+		cancel()
+		os.Exit(1)
+	}
+	blocks.NewListener(ctx, adm, listenerCfg)
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	<-c

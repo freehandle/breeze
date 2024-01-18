@@ -13,6 +13,7 @@ import (
 	"github.com/freehandle/breeze/consensus/relay"
 	"github.com/freehandle/breeze/consensus/swell"
 	"github.com/freehandle/breeze/crypto"
+	"github.com/freehandle/breeze/middleware/admin"
 	"github.com/freehandle/breeze/middleware/config"
 	"github.com/freehandle/breeze/socket"
 )
@@ -54,30 +55,42 @@ func main() {
 	slog.SetDefault(slog.New(logger))
 
 	swellConfig := SwellConfigFromConfig(cfg)
-	relay, err := RelayFromConfig(ctx, cfg, crypto.ZeroPrivateKey)
+	relayConfig := RelayFromConfig(ctx, cfg, crypto.ZeroPrivateKey)
+	relay, err := relay.Run(ctx, relayConfig)
 	if err != nil {
 		cancel()
 		fmt.Printf("could not open relay ports: %v\n", err)
 		os.Exit(1)
 	}
+	nodeToken := crypto.TokenFromString(cfg.Token)
+	secrets := config.WaitForRemoteKeysSync(ctx, []crypto.Token{nodeToken}, "localhost", cfg.AdminPort)
+	var nodeSecret crypto.PrivateKey
+	if secret, ok := secrets[nodeToken]; !ok {
+		fmt.Println("Key sync failed, exiting")
+		cancel()
+		os.Exit(1)
+	} else {
+		nodeSecret = secret
+	}
+
+	adm, err := admin.OpenAdminPort(ctx, "localhost", nodeSecret, cfg.AdminPort, relayConfig.Firewall.AcceptGateway, relayConfig.Firewall.AcceptBlockListener)
+	if err != nil {
+		fmt.Printf("could not open admin port: %v\n", err)
+		cancel()
+		os.Exit(1)
+	}
+
 	if os.Args[2] == "genesis" {
 		fmt.Println("creating genesis node")
-		admin, pk := WaitForKeysSync(ctx, cfg)
-		if admin == nil {
-			cancel()
-			fmt.Println("canceled")
-			os.Exit(1)
-		}
-
 		validatorConfig := swell.ValidatorConfig{
-			Credentials:    pk,
+			Credentials:    nodeSecret,
 			WalletPath:     cfg.WalletPath,
 			SwellConfig:    swellConfig,
 			Relay:          relay,
-			Admin:          admin,
+			Admin:          adm,
 			TrustedGateway: TokenAddrArrayFromPeeers(cfg.TrustedNodes),
 		}
-		swell.NewGenesisNode(ctx, pk, validatorConfig)
+		swell.NewGenesisNode(ctx, nodeSecret, validatorConfig)
 		return
 	} else if len(os.Args) < 5 {
 		fmt.Println(usage)
@@ -92,19 +105,13 @@ func main() {
 			fmt.Printf("invalid token: %v\n%v\n", os.Args[4], usage)
 			os.Exit(1)
 		}
-		admin, pk := WaitForKeysSync(ctx, cfg)
 		validatorConfig := swell.ValidatorConfig{
-			Credentials:    pk,
+			Credentials:    nodeSecret,
 			WalletPath:     cfg.WalletPath,
 			SwellConfig:    swellConfig,
 			Relay:          relay,
-			Admin:          admin,
+			Admin:          adm,
 			TrustedGateway: TokenAddrArrayFromPeeers(cfg.TrustedNodes),
-		}
-		if admin == nil {
-			cancel()
-			fmt.Println("canceled")
-			os.Exit(1)
 		}
 		err = swell.FullSyncValidatorNode(ctx, validatorConfig, socket.TokenAddr{}, nil)
 	}
@@ -134,7 +141,7 @@ func RelayNode(ctx context.Context, config *NodeConfig, secret crypto.PrivateKey
 	return nil
 }
 
-func RelayFromConfig(ctx context.Context, config *NodeConfig, pk crypto.PrivateKey) (*relay.Node, error) {
+func RelayFromConfig(ctx context.Context, config *NodeConfig, pk crypto.PrivateKey) relay.Config {
 	listGateways := make([]crypto.Token, 0)
 	for _, peer := range config.Relay.Gateway.Firewall.Whitelist {
 		if token := crypto.TokenFromString(peer); !token.Equal(crypto.ZeroToken) {
@@ -153,13 +160,12 @@ func RelayFromConfig(ctx context.Context, config *NodeConfig, pk crypto.PrivateK
 		AcceptBlockListener: socket.NewValidConnections(listBlockListeners, config.Relay.BlockStorage.Firewall.OpenRelay),
 	}
 
-	relayConfig := relay.Config{
+	return relay.Config{
 		Credentials:       pk,
 		GatewayPort:       config.Relay.Gateway.Port,
 		BlockListenerPort: config.Relay.BlockStorage.Port,
 		Firewall:          &firewall,
 	}
-	return relay.Run(ctx, relayConfig)
 }
 
 func SwellConfigFromConfig(cfg *NodeConfig) swell.SwellNetworkConfiguration {

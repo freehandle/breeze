@@ -7,9 +7,9 @@ import (
 
 	"fmt"
 
-	"github.com/freehandle/breeze/consensus/admin"
 	"github.com/freehandle/breeze/consensus/messages"
 	"github.com/freehandle/breeze/crypto"
+	"github.com/freehandle/breeze/middleware/admin"
 	"github.com/freehandle/breeze/middleware/config"
 	"github.com/freehandle/breeze/socket"
 )
@@ -93,14 +93,12 @@ func NewServer(ctx context.Context, config Configuration, administration *admin.
 				liveClients.Wait()
 				close(proposal)
 				return
-			case firewall := <-administration.FirewallAction:
-				if firewall.Scope == admin.GrantGateway {
-					config.Firewall.Add(firewall.Token)
-				} else if firewall.Scope == admin.RevokeGateway {
-					config.Firewall.Remove(firewall.Token)
+			case req := <-administration.Interaction:
+				if req.Request[0] == admin.MsgAdminReport {
+					req.Response <- []byte(fmt.Sprintf("Gateway: %d clients connected", len(server.serving)))
+				} else {
+					req.Response <- []byte{}
 				}
-			case status := <-administration.Status:
-				status <- fmt.Sprintf("Gateway: %d clients connected", len(server.serving))
 			}
 		}
 

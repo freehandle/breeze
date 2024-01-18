@@ -122,5 +122,4 @@ func WaitForOutgoingSyncRequest(conn *socket.SignedConnection, syncRequest chan 
 		return
 	}
 	conn.Shutdown()
-	return
 }

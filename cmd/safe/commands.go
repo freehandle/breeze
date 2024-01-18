@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/freehandle/breeze/consensus/admin"
 	"github.com/freehandle/breeze/crypto"
+	"github.com/freehandle/breeze/middleware/admin"
 	"github.com/freehandle/breeze/socket"
 )
 
