@@ -1,43 +1,31 @@
 ## Breeze
 
-Protocol functionalities and usage are described troughout this document. 
+Official implementation of the breeze protocol and associated utilities.
 
-[API Reference]([breeze command - github.com/freehandle/breeze - Go Packages](https://pkg.go.dev/github.com/freehandle/breeze)) 
-
-Binary archives are published at [link]([GitHub - freehandle/breeze: High performance multipurpose crypto network designed for the development of digital interactions between people on the basiis of varied social protocols.](https://github.com/freehandle/breeze)).
-
-Breeze actions include the transfer of tokens between accounts, the deposit of tokens as guarantee for participating in the consensus, the withdraw of tokens from consensus participants and a general purpose void action, to be used by more specialized protocols. 
-
-When the void action is used, Breeze serves as a gateway for the processing of the underlying protocol's instructions.
-
-<br/><br/>
+For a description of the breeze protocol see [breeze presentation](https://github.com/freehandle/breeze/blob/main/breezedoc.md).
 
 ## Building the source
-
-For prerequisites and detailed build instructions please read the [installation instructions]().
 
 Building blow requires a Go compiler (1.21 or later). You can install it using your favorite package manager. Once it is installed, run
 
 **`make blow`**
 
-Or, if you would rather build the full suit of utilities, run
+to build only the blow validator, or 
 
 **`make all`**
 
-<br/><br/>
+to build all executable within cmd folder. 
 
 ## Executables
 
-Breeze works by use of four independent modules, each providing a different service. A brief description of each module and their respective requirements follows.
+Breeze network usage relies on four independent services, found in cmd folder, each providing a specific functionality. 
 
-| Module     | Description                                                              |
-| ---------- | ------------------------------------------------------------------------ |
-| **`Blow`** | Creates a functioning node on a breeze network                           |
-| **`Beat`** | Sets the action gateway service                                          |
-| **`Echo`** | Performs the block storage and indexation service                        |
-| **`Safe`** | Safekeeps keys and provides interaction interface for nodes and services |
-
-<br/><br/>
+| Module     | Description                                                                  |
+| ---------- | ---------------------------------------------------------------------------- |
+| **`blow`** | sequencer and validator for the breeze protocol                              |
+| **`beat`** | gateway that receives actions (transactions) and forwards them to validators |
+| **`echo`** | block storage and indexing                                                   |
+| **`kite`** | remote administration of services and safekeeping of crypto secrets          |
 
 ## Modular architecture
 
@@ -57,73 +45,144 @@ Breeze was designed to provide three main services, uncoupled.
 
 With these three services, and given the void action prescribed by the breeze protocol, it is possible to also provide more specialized protocols as a forth service. Social protocols can be designed for specific uses and easily deployed as a forth decoupled service on top of the breeze network.
 
-<br/><br/>
+## Minimum hardware requirements for running each module
 
-## Hardware requirements for running any module
+#### blow/beat:
 
-Minimum:
+- CPU with 2 cores
+
+- 4Gb RAM
+
+- 20 MBit/sec internet connectivity
+
+- static IP address
+
+#### echo:
 
 - CPU with 4 cores
 
-- 8Gb RAM
+- 16Gb RAM
 
-- 20 MBit/sec download interned service
+- 20 MBit/sec internet connectivity
 
-<br/><br/>
-
-## Safe module overview
-
-Safe module provides key safekeeping, and commands for interaction with nodes and the other services.  Main safe commands and their respective description follow
-
-- **`create`**
-  
-  Creates a new secure vaut with a random crypto key
-
-- **`show`**
-  
-  Shows information about the vault file
-
-- **`sync`**
-  
-  Connects to trusted node and asks for the secret keys the node expects to receive
-
-- **`register`**
-  
-  Registers a new trusted node on the breeze network
-
-- **`grant`**
-  
-  Grants the token access to connect to the trusted node as a gateway or block listener
-
-A full list of safe module commands can be found in a later [section](#safe-full-command-list) of this document, including more detailed descriptions.
-
-<br/>
-
-#### Running safe
-
-To run safe, 
-
-**`safe <path-to-vault-file> <command> [arguments]`**
+- 1Tb disk space 
 
 
+#### kite: 
 
-To check any of the commands help instructions, run
-
-**`go run ./safe help <command>`** replacing the `<command>` with the command you wish to look for informations of.
-
+- any configuration
 
 
-To start using you may create a vault. From within the `cmd` folder, run
+## Kite module overview
 
-**`go run ./safe path/to_vault/vault_name create`**
+Kite module is used for remote administration of modules and to send actions to 
+breeze network. Detailed information is found [below](#safe-full-command-list).
+Basic usage:
 
-To which you will be asked to provide a pass phrase, the phrase provided will be used to encrypt the vault. Once the safe is generated, the remaining commands may be used to perform various functionalities on the breeze network. The functionalities associated with each module will be reference on each module's topic throughout this document.
+To create a new vault for secrets safekeeping
 
-<br/><br/> 
+```
+kite <file-name-for-new-vault> create 
+```
+
+To show information about the vault, incluind public key associated to the vault
+
+
+```
+kite <path-to-existing-vault-file> show
+```
+
+To create a new cryptographic key pair
+
+```
+kite <path-to-existing-vault-file> generate
+```
+
+The public key will be shown.
+
+To share secrets with remote module 
+
+```
+kite <path-to-exisitng-vault-file> sync <remote-address> <remote-token>
+```
+
+Before using kite for remote administration of modules one has to register them as trusted nodes
+
+```
+kite <path-to-exisitng-vault-file> register <node-id> <address> <token> <description>
+
+```
+
+Where <node-id> is used to refer to the node in the administration commands. For example in order to grant/revoke tokens access to node functionalities 
+
+```
+kite <path-to-exisitng-vault-file> [grant|revoke] <node-id> <token> [gateway|block] (description)
+```
 
 ## Running blow
 
-Blow module can run on two different scenarios: either proof-of-stake permission, or proof-of-authority. 
+To run blow validator one has to provide a json configuration file with the desired specifications.
+
+```
+blow <path-to-json-config-file>
+```
+
+The simplest scenario to run blow is as a validator candidate for the proof-of-stake Paúba testnet. 
+Check [freehandle.org](freehandle.org/testnets) to get instructions on how to get necessary tokens to stake for permission. 
+
+In the configurations __Public Keys__ are always represented by its hexadecimal 64-char representation without any prefix. The network relies on token-based firewall rules. Firewall configuration is of the form
+
+```
+{
+    "open": [true|false]
+    "tokenList": [<token 1>, <token 2>,...] 
+ }
+```
+
+When "open" is set to __true__ the firewall will by default allow all connections except those blacklisted by the "tokenList". When __false__ the firewall will by default forbid all connections except those whitelisted by the "tokenList". 
+
+#### Proof-of-Stake standard configuration
+
+```
+{
+    "token" : "node public key",
+    "address": "node address: may be either an IP or domain name",
+    "adminPort": 5403, 
+    "walletPath": "empty (for memory only) or a path to folder (for persistence)",
+    "logPath": "empty (for standard logging) or a path to log folder",
+    "relay": {
+        "gateway": {
+            "port": 5404,
+            "throughput": 15000,
+            "firewall": { firewall configuration (see above) }
+        },
+        blocks": {
+            "port": 5405,
+            "maxConnections" : <any number of connections>,
+            "firewall": { firewall configuration (see above) }
+        },
+    },
+    "trustedNodes": [
+        {
+            "address": "trusted node address (without port)",
+            "token": <trusted node token>
+        },...
+    ]
+}
+```
+
+The underlying system must keep the ports 5401, 5402, 5404 and 5405 open for tcp connections from anywhere. Even though not required by the protocol, it is desirable that validator nodes keep gateway and blocks relay firewalls open so that gateway services and block listeners can connect to the validator.
+
+One can check [freehandle.org](freehandle.org/testnets/pauba) for a freehandle trusted node for the Paúba proof-of-stake testnet.
+
+After running the node one has to use kite to sync the secret key associated with the node token. The token must be a public key indexed in the vault file. 
+
+The service will try to connect to trusted nodes to sync state and if successfull candidate to become a validator. 
+
+#### Personalized breeze configuration
+
+In order to configure
+
 
 #### Proof-of-stake permission configuration
 
@@ -135,33 +194,6 @@ Node can run on the official testnet or you may create a new network from genesi
 
 2. To create a new network from genesis, create a json file within the blow folder. The file must include the following fields, as explained in the example. All tokens are in hex string format. 
 
-```
-{
-    "token" : "public key associated with node owner",
-    "address": "address associated with the node. may be either an IP or domain name",
-    "adminPort": port for admin connections. 5403 for standard breeze configuration,
-    "walletPath": "left empty for memory based wallet store. if filled, must be a path to valid folder with appropriate permissions",
-    "logPath": "left empty for standard logging. if filled, must be a path to a valid folder with appropriate permissions",
-    "network": // optional field for network preferences, left empty for PoS standard breeze configuration 
-    {
-        "breeze": { breeze network configuration (see below), left empty for standard breeze configuration },
-        "permission":  { permission configuration (see below), left empty for standard breeze PoS } 
-    },
-    "relay": {
-        "gateway": {
-            "port": gateway port, 5404 for standard breeze configuration,
-            "throughput": number of actions per block to be forwarded,
-            "firewall": { firewall configuration (see below) }
-        },
-        "blockStorage": {
-            "port": block events broadcasting port, 5405 for standard breeze configuration,
-            "storagePath": valid directory for block database files persistent storage,
-            "indexWallets": true if actions should be indexed, false otherwise,
-            "firewall": { firewall configuration (see below) }
-        },
-    }
-}
-```
 
 <br/>
 
@@ -202,12 +234,6 @@ By choosing the standard Proof-of-Stake permission configuration, you may provid
 
 For the firewall configuration, you may provide the "firewall" json field the following setup:
 
-```
- "firewall": {
-     "openRelay": if true, relay is left open for any external connection. if false, firewall blocks connections outside listed permissions,
-     "whitelist": when openRelay is false, this field must provide a list of permitted connections as in [ "token1", "token2", ... ] format,
- }
-```
 
 For a functioning example of this json file, please refer to [json_example]().
 
