@@ -4,13 +4,13 @@ Protocol functionalities and usage are described troughout this document.
 
 [API Reference]([breeze command - github.com/freehandle/breeze - Go Packages](https://pkg.go.dev/github.com/freehandle/breeze)) 
 
-Archives are published at [link]([GitHub - freehandle/breeze: High performance multipurpose crypto network designed for the development of digital interactions between people on the basiis of varied social protocols.](https://github.com/freehandle/breeze)).
+Binary archives are published at [link]([GitHub - freehandle/breeze: High performance multipurpose crypto network designed for the development of digital interactions between people on the basiis of varied social protocols.](https://github.com/freehandle/breeze)).
 
 Breeze actions include the transfer of tokens between accounts, the deposit of tokens as guarantee for participating in the consensus, the withdraw of tokens from consensus participants and a general purpose void action, to be used by more specialized protocols. 
 
 When the void action is used, Breeze serves as a gateway for the processing of the underlying protocol's instructions.
 
-<br/>
+<br/><br/>
 
 ## Building the source
 
@@ -24,11 +24,11 @@ Or, if you would rather build the full suit of utilities, run
 
 **`make all`**
 
-<br/>
+<br/><br/>
 
 ## Executables
 
-Breeze functions by four independent modules, each providing a different service. A brief description of each module and their respective requirements follows.
+Breeze works by use of four independent modules, each providing a different service. A brief description of each module and their respective requirements follows.
 
 | Module     | Description                                                              |
 | ---------- | ------------------------------------------------------------------------ |
@@ -37,7 +37,7 @@ Breeze functions by four independent modules, each providing a different service
 | **`Echo`** | Performs the block storage and indexation service                        |
 | **`Safe`** | Safekeeps keys and provides interaction interface for nodes and services |
 
-<br/>
+<br/><br/>
 
 ## Modular architecture
 
@@ -57,7 +57,7 @@ Breeze was designed to provide three main services, uncoupled.
 
 With these three services, and given the void action prescribed by the breeze protocol, it is possible to also provide more specialized protocols as a forth service. Social protocols can be designed for specific uses and easily deployed as a forth decoupled service on top of the breeze network.
 
-<br/>
+<br/><br/>
 
 ## Hardware requirements for running any module
 
@@ -69,51 +69,49 @@ Minimum:
 
 - 20 MBit/sec download interned service
 
+<br/><br/>
+
+## Safe module overview
+
+Safe module provides key safekeeping, and commands for interaction with nodes and the other services.  Main safe commands and their respective description follow
+
+- **`create`**
+  
+  Creates a new secure vaut with a random crypto key
+
+- **`show`**
+  
+  Shows information about the vault file
+
+- **`sync`**
+  
+  Connects to trusted node and asks for the secret keys the node expects to receive
+
+- **`register`**
+  
+  Registers a new trusted node on the breeze network
+
+- **`grant`**
+  
+  Grants the token access to connect to the trusted node as a gateway or block listener
+
+A full list of safe module commands can be found in a later [section](#safe-full-command-list) of this document, including more detailed descriptions.
+
 <br/>
-
-## Safe module
-
-This module provides key safekeeping, and commands for interaction with nodes and the other services. Safe command list and respective description follow.
-
-| Command        | Description                                                                                                                                                                                                                                                                                                                                                        |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **`create`**   | Creates a new secure vault with a random crypto key. The vault will be encrypted with a password provided by the user.                                                                                                                                                                                                                                             |
-| **`show`**     | Shows information about the vault file.                                                                                                                                                                                                                                                                                                                            |
-| **`status`**   | Provides a given node's status on the network.                                                                                                                                                                                                                                                                                                                     |
-| **`sync`**     | Connects to trusted node and asks for the secret keys the node expects to receive. The trusted node will only accept the connection if the token associated to the secret key of the vault is configured with admin rights on the trusted node.                                                                                                                    |
-| **`register`** | Registers a new trusted node on the breeze network. The node ID is a unique identifier for the node within the vault. The command also requires an address, which mus be a valid TCP address, a token which mus be the token associated to the node and a human readable description of the node. The token is used to authenticate signed connection to the node. |
-| **`remove`**   | Removes associated node from the pool of trusted nodes within the vault. The action will only have effect if the provided node ID is already registered within the vault.                                                                                                                                                                                          |
-| **`nodes`**    | Lists all the trusted nodes registered within the vault.                                                                                                                                                                                                                                                                                                           |
-| **`transfer`** | Instructs node to transfer a given amount of funds from a given account to the pointed account.                                                                                                                                                                                                                                                                    |
-| **`deposit`**  | Instructs node to deposit a given amount of funds from a given account to the pointed account.                                                                                                                                                                                                                                                                     |
-| **`withdraw`** | Instructs node to withdraw a given amount of funds from a given account.                                                                                                                                                                                                                                                                                           |
-| **`balance`**  | Returns the balance of a given account.                                                                                                                                                                                                                                                                                                                            |
-| **`config`**   | Configures a given variable's value for the node.                                                                                                                                                                                                                                                                                                                  |
-| **`grant`**    | Grants the token access to connect to the trusted node as a gateway or block listener. The trusted node will only accept the connection if the token associated to the secret key of the vault is configured with admin rights on the trusted node.                                                                                                                |
-| **`revoke`**   | Revokes the token's connect access to the trusted node as a gateway or block listener. The trusted node will only revoke the connection if the token associated to the secret key of the vault is configured with admin rights on the trusted node. The action will only have effect if the token is already granted access to the trusted node.                   |
-| **`activity`** | Instructs trusted node whether to candidate to become a validator. It will only have effect in the next checksum window. To shutdown a node immediately connect to the server running the node. The trusted node will only accept the connection if the token associated to the secret key of the vault is configured with admin rights on the trusted node.       |
-| **`generate`** | Generates a random ED25519 cryptographic key-pair and stores the private key on the secure vault file. The public key is printed to the standard output.                                                                                                                                                                                                           |
-| **`firewall`** | Configures firewall functionality for a given port.                                                                                                                                                                                                                                                                                                                |
 
 #### Running safe
 
-From within the safe folder `freehandle/breeze/cmd/safe` run
-
-**`go build`**
-
-Once the module is built, from within `freehandle/breeze/cmd` folder run
-
-**`go run ./safe`**
-
-This will provide a list of commands.  To check any of the listed commands help instructions, run
-
-**`go run ./safe help <command>`** replacing the `<command>` with the command you wish to look for informations of. 
-
-<br/>
-
-Safe module commands follow the pattern below
+To run safe, 
 
 **`safe <path-to-vault-file> <command> [arguments]`**
+
+
+
+To check any of the commands help instructions, run
+
+**`go run ./safe help <command>`** replacing the `<command>` with the command you wish to look for informations of.
+
+
 
 To start using you may create a vault. From within the `cmd` folder, run
 
@@ -121,25 +119,23 @@ To start using you may create a vault. From within the `cmd` folder, run
 
 To which you will be asked to provide a pass phrase, the phrase provided will be used to encrypt the vault. Once the safe is generated, the remaining commands may be used to perform various functionalities on the breeze network. The functionalities associated with each module will be reference on each module's topic throughout this document.
 
-<br/> 
+<br/><br/> 
 
 ## Running blow
 
 Blow module can run on two different scenarios: either proof-of-stake permission, or proof-of-authority. 
 
-#### Proof-of-stake permission
+#### Proof-of-stake permission configuration
 
 Node can run on the official testnet or you may create a new network from genesis. 
 
 1. To run on the official testnet
    
    <br>
-   
-   
 
 2. To create a new network from genesis, create a json file within the blow folder. The file must include the following fields, as explained in the example. All tokens are in hex string format. 
 
-```json
+```
 {
     "token" : "public key associated with node owner",
     "address": "address associated with the node. may be either an IP or domain name",
@@ -171,7 +167,7 @@ Node can run on the official testnet or you may create a new network from genesi
 
 If you choose not to use Breeze's standard configuration, you may provide the "breeze" json field the following setup:
 
-```json
+```
 "breeze": {
     "gossipPort": port for broadcasting. 5401 for standard breeze configuration,
     "blocksPort": port for broadcasting blocks 5402, for standard breeze configuration,
@@ -193,11 +189,11 @@ If you choose not to use Breeze's standard configuration, you may provide the "b
 
 By choosing the standard Proof-of-Stake permission configuration, you may provide the "permission" json field the following setup:
 
-```json
+```
 "permission": {
     "pos": // proof-of-stake permission configuration, as opposed to standard "poa" (proof-of-authority)
     {
-        "minimimStake": minimum amount of tokens deposited for a node to be	eligible for the committee. 1e6 for standard breeze configuration,
+        "minimimStake": minimum amount of tokens deposited for a node to be    eligible for the committee. 1e6 for standard breeze configuration,
     },
 },
 ```
@@ -206,14 +202,12 @@ By choosing the standard Proof-of-Stake permission configuration, you may provid
 
 For the firewall configuration, you may provide the "firewall" json field the following setup:
 
-```json
+```
  "firewall": {
      "openRelay": if true, relay is left open for any external connection. if false, firewall blocks connections outside listed permissions,
      "whitelist": when openRelay is false, this field must provide a list of permitted connections as in [ "token1", "token2", ... ] format,
  }
 ```
-
-
 
 For a functioning example of this json file, please refer to [json_example]().
 
@@ -229,7 +223,7 @@ You may run a network under the proof-of-authority permissioning protocol. In th
 
 In order to choose the Proof-of-Authority permission configuration, you must provide the "permission" json field the following setup:
 
-```json
+```
 "permission": {
     "poa": // proof-of-authority permission configuration, as opposed to standard "pos" (proof-of-stake)
     {
@@ -238,29 +232,11 @@ In order to choose the Proof-of-Authority permission configuration, you must pro
 },
 ```
 
-
-
-#### Blow configuration
-
-Blow module configuration takes the following information:
-
-| Information          | Description                                                                                                           |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| **`token`**          | Token associated with the node                                                                                        |
-| **`address`**        | Node address (IP or domain name)                                                                                      |
-| **`admin port`**     | Port for admin connections                                                                                            |
-| **`wallet path`**    | Left empty for memory based wallet store <br>If filled, should be a path to valid folder with appropriate permissions |
-| **`log path`**       | Left empty for standard logging <br>If filled, should be a path to valid folder with appropriate permissions          |
-| **`breeze config`**  | Left empty for standard POS configuration                                                                             |
-| **`relay config`**   | Left empty for standard Relay configuration                                                                           |
-| **`genesis config`** | Left empty for standard Genesis configuration                                                                         |
-| **`trusted nodes`**  | List of trusted nodes to connect when not participating in the validator pool.                                        |
-
-Minimum standard configuration requires the address. 
+<br/>
 
 #### Using safe to manage node
 
-As presented on the Safe module topic above, some safe commands deal with blow module functionalities. These are listed on the following table
+Some safe commands deal with blow module functionalities. These are listed on the following table
 
 | Command        | Description                                                                                                                                                                                                                                                                                                                                                        |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -280,40 +256,34 @@ As presented on the Safe module topic above, some safe commands deal with blow m
 
 ## Running beat
 
-From within the beat folder `freehandle/breeze/cmd/beat` run
+Run
 
-**`go build`**
-
-Once the module is built, from within `freehandle/breeze/cmd` folder run
-
-**`go run ./beat <config.json>`**
+**`beat <config.json>`**
 
 The config.json file provided must include the following fields
 
-```json
-// check
-"token": token,
-"wallet": address of the wallet 
-```
-
-
+<br/>
 
 #### Beat Configuration
 
 Beat module configuration takes the following information, with token adresses in hex string format
 
-| Information             | Description                                                                                                |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------- |
-| **`token`**             | Token                                                                                                      |
-| **`wallet`**            | Wallet address                                                                                             |
-| **`port`**              | Broadcasting port                                                                                          |
-| **`admin port`**        | Port for admin connections                                                                                 |
-| **`log path`**          | Left empty for standard logging. If filled, should be a path to valid folder with appropriate permissions. |
-| **`action relay port`** | Port actions transmissions                                                                                 |
-| **`block relay path`**  | Port for block transmissions                                                                               |
-| **`breeze`**            | Breeze network configuration. Left empty for standard POS configuration.                                   |
-| **`firewall`**          | Firewal configuration.                                                                                     |
-| **`trusted`**           | List of trusted nodes to connect when not participating in the validator pool.                             |
+```
+// check
+"token": token,
+"wallet": address of the wallet 
+"port": broadcasting port 
+"adminPort": port for admin connections
+
+"logPath": left empty for standard logging. if filled, should be a path to folder
+"actionRelayPort": Port actions transmissions
+"blockRelayPath": Port for block transmissions 
+"breeze": Breeze network configuration. Left empty for standard POS configuration
+"firewall":Firewal configuration
+"trusted": List of trusted nodes to connect when not participating in the validator pool
+```
+
+#### 
 
 #### Admin beat module with safe
 
@@ -329,19 +299,11 @@ As presented on the Safe module topic above, some safe commands deal with beat m
 
 ## Running echo
 
-From within the beat folder `freehandle/breeze/cmd/echo` run
+Run
 
-**`go build`**
-
-Once the module is built, from within `freehandle/breeze/cmd` folder run
-
-**`go run ./echo <path-to-json-config-file>`**
+**`echo <path-to-json-config-file>`**
 
 The config.json file provided must include the following fields
-
-```json
-// check
-```
 
 <br/>
 
@@ -349,19 +311,22 @@ The config.json file provided must include the following fields
 
 Echo module configuration takes the following information
 
-| Information         | Description                                                                                                       |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| **`token`**         | Token of the service.                                                                                             |
-| **`port`**          | Port for service providing                                                                                        |
-| **`address`**       | Node address (IP or domain name)                                                                                  |
-| **`admin port`**    | Port for admin connections                                                                                        |
-| **`storage path`**  | Left empty for standard storage<br>If filled, should be a path to valid folder with appropriate permissions.      |
-| **`indexed`**       | Boolean, true for indexing of blocks adresses. False otherwise.                                                   |
-| **`wallet path`**   | Left empty for memory based wallet store. If filled, must be a path to valid folder with appropriate permissions. |
-| **`log path`**      | Left empty for standard logging<br>If filled, should be a path to valid folder with appropriate permissions.      |
-| **`breeze config`** | Breeze network configuration. Left empty for standard POS configuration.                                          |
-| **`firewall`**      | Firewal configuration.                                                                                            |
-| **`trusted nodes`** | List of trusted nodes to connect when not participating in the validator pool.                                    |
+```
+// check
+"token": Token of the service,
+"port": Port for service providing,
+"address": Node address (IP or domain name),
+"adminPort": Port for admin connections,
+"storagePath": Left empty for standard storage. If filled, should be a path to folder,
+"indexed": Boolean, true for indexing of blocks adresses. false otherwise,
+"walletPath": Left empty for memory based wallet store. If filled, must be a path to folder,
+"logPath": Left empty for standard logging, if filled, should be a path to folder,
+"breeze": breeze network configuration. left empty for standard POS configuration,
+"firewall": firewall configuration,
+"trusted": list of trusted nodes to connect when not participating in the validator pool,
+```
+
+<br/>
 
 #### Admin echo module with safe
 
@@ -378,12 +343,42 @@ As presented on the Safe module topic above, some safe commands deal with echo m
 
 ## Contribution
 
-
-
 #### Synergy
 
-Synergy protocol is a social protocol 
+[Synergy]([GitHub - freehandle/synergy: Social Protocol for the exploration of collective action into building a personal internet](https://github.com/freehandle/synergy)) protocol was designed as a digital framework for collaboration and collective construction. It works seamlessly on top of the Breeze protocol working with  
 
-<br/>
+[handles]([GitHub - freehandle/axe: Basic ID layer with delegation for the social funcionalities within breeze network](https://github.com/freehandle/axe)) social protocol, which provides  primitives for identity and stage management.
+
+Breeze is, itself, an ongoing project inside the Synergy protocol. To collaborate with building Breeze, you may join [Synergy's Breeze Collective](). 
+
+<br/><br/>
+
+## Safe full command list
+
+Safe module's full list of commands and their respective description follow. 
+
+| Command        | Description                                                                                                                                                                                                                                                                                                                                                        |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **`create`**   | Creates a new secure vault with a random crypto key. The vault will be encrypted with a password provided by the user.                                                                                                                                                                                                                                             |
+| **`show`**     | Shows information about the vault file.                                                                                                                                                                                                                                                                                                                            |
+| **`status`**   | Provides a given node's status on the network.                                                                                                                                                                                                                                                                                                                     |
+| **`sync`**     | Connects to trusted node and asks for the secret keys the node expects to receive. The trusted node will only accept the connection if the token associated to the secret key of the vault is configured with admin rights on the trusted node.                                                                                                                    |
+| **`register`** | Registers a new trusted node on the breeze network. The node ID is a unique identifier for the node within the vault. The command also requires an address, which mus be a valid TCP address, a token which mus be the token associated to the node and a human readable description of the node. The token is used to authenticate signed connection to the node. |
+| **`remove`**   | Removes associated node from the pool of trusted nodes within the vault. The action will only have effect if the provided node ID is already registered within the vault.                                                                                                                                                                                          |
+| **`nodes`**    | Lists all the trusted nodes registered within the vault.                                                                                                                                                                                                                                                                                                           |
+| **`transfer`** | Instructs node to transfer a given amount of funds from a given account to the pointed account.                                                                                                                                                                                                                                                                    |
+| **`deposit`**  | Instructs node to deposit a given amount of funds from a given account to the pointed account.                                                                                                                                                                                                                                                                     |
+| **`withdraw`** | Instructs node to withdraw a given amount of funds from a given account.                                                                                                                                                                                                                                                                                           |
+| **`balance`**  | Returns the balance of a given account.                                                                                                                                                                                                                                                                                                                            |
+| **`config`**   | Configures a given variable's value for the node.                                                                                                                                                                                                                                                                                                                  |
+| **`grant`**    | Grants the token access to connect to the trusted node as a gateway or block listener. The trusted node will only accept the connection if the token associated to the secret key of the vault is configured with admin rights on the trusted node.                                                                                                                |
+| **`revoke`**   | Revokes the token's connect access to the trusted node as a gateway or block listener. The trusted node will only revoke the connection if the token associated to the secret key of the vault is configured with admin rights on the trusted node. The action will only have effect if the token is already granted access to the trusted node.                   |
+| **`activity`** | Instructs trusted node whether to candidate to become a validator. It will only have effect in the next checksum window. To shutdown a node immediately connect to the server running the node. The trusted node will only accept the connection if the token associated to the secret key of the vault is configured with admin rights on the trusted node.       |
+| **`generate`** | Generates a random ED25519 cryptographic key-pair and stores the private key on the secure vault file. The public key is printed to the standard output.                                                                                                                                                                                                           |
+| **`firewall`** | Configures firewall functionality for a given port.                                                                                                                                                                                                                                                                                                                |
+
+<br/> <br/>
 
 ## License
+
+Breeze is licensed under the [Apache 2.0 license](https://www.apache.org/licenses/LICENSE-2.0.txt). 
