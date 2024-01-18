@@ -4,7 +4,7 @@ Official implementation of the breeze protocol and associated utilities.
 
 For a description of the breeze protocol see [breeze presentation](https://github.com/freehandle/breeze/blob/main/breezedoc.md).
 
-This file is about running breeze network infrastructure. For instructions about deploying specialized protocols on top of breeze network please refer to [social protocol documentation](https://github.com/freehandle/breeze/middleware/social/README.md).
+This file deals with running breeze network infrastructure. For instructions about deploying specialized protocols on top of breeze network please refer to [social protocol documentation](https://github.com/freehandle/breeze/middleware/social/README.md).
 
 ## Building the source
 
@@ -65,16 +65,13 @@ With these three services, and given the void action prescribed by the breeze pr
 
 - 1Tb disk space 
 
-
-#### kite: 
+#### kite:
 
 - any configuration
 
-
 ## Kite module overview
 
-Kite module is used for remote administration of modules and to send actions to 
-breeze network. 
+Kite module is used for remote administration of modules and to send actions to breeze network. 
 
 Basic usage:
 
@@ -84,8 +81,7 @@ To create a new vault for secrets safekeeping
 kite <file-name-for-new-vault> create 
 ```
 
-To show information about the vault, incluind public key associated to the vault
-
+To show information about the vault, including the public key associated with the vault
 
 ```
 kite <path-to-existing-vault-file> show
@@ -109,21 +105,19 @@ Before using kite for remote administration of modules one has to register them 
 
 ```
 kite <path-to-exisitng-vault-file> register <node-id> <address> <token> <description>
-
 ```
 
-Where <node-id> is used to refer to the node in the administration commands. For example in order to grant/revoke tokens access to node functionalities 
+Where <node-id> is used to refer to the node in the administration commands. For example, in order to grant/revoke tokens access to node functionalities 
 
 ```
 kite <path-to-exisitng-vault-file> [grant|revoke] <node-id> <token> [gateway|block] (description)
 ```
 
-Detailed information about these and other funcionalities can be found in the kite help command.
+Detailed information about these and other funcionalities can be found through the kite help command.
 
 ```
 kite help
 ```
-
 
 ## Running blow
 
@@ -136,7 +130,7 @@ blow <path-to-json-config-file>
 The simplest scenario to run blow is as a validator candidate for the proof-of-stake Paúba testnet. 
 Check [freehandle.org](freehandle.org/testnets) to get instructions on how to get necessary tokens to stake for permission. 
 
-In the configurations __Public Keys__ are always represented by its hexadecimal 64-char representation without any prefix. The network relies on token-based firewall rules. Firewall configuration is of the form
+In the configuration file, __Public Keys__ are always provived in their hexadecimal 64-char representation without any prefix. The network relies on token-based firewall rules. Firewall configuration is of the form
 
 ```
 {
@@ -145,7 +139,7 @@ In the configurations __Public Keys__ are always represented by its hexadecimal 
  }
 ```
 
-When "open" is set to __true__ the firewall will by default allow all connections except those blacklisted by the "tokenList". When __false__ the firewall will by default forbid all connections except those whitelisted by the "tokenList". 
+When "open" is set to __true__ the firewall will by default allow all connections except those blacklisted by the "tokenList". When __false__, the firewall will by default forbid all connections except those whitelisted by the "tokenList". 
 
 #### Proof-of-Stake standard configuration
 
@@ -177,17 +171,17 @@ When "open" is set to __true__ the firewall will by default allow all connection
 }
 ```
 
-The underlying system must keep the ports 5401, 5402, 5404 and 5405 open for tcp connections from anywhere. Even though not required by the protocol, it is desirable that validator nodes keep gateway and blocks relay firewalls open so that gateway services and block listeners can connect to the validator.
+The underlying system must keep the ports 5401, 5402, 5404 and 5405 open for TCP connections from anywhere. Although not required by the protocol, it is desirable that validator nodes keep gateway and blocks relay firewalls open so that gateway services and block listeners can connect to the validator.
 
 One can check [freehandle.org](freehandle.org/testnets/pauba) for a freehandle trusted node for the Paúba proof-of-stake testnet.
 
 After running the node one has to use kite to sync the secret key associated with the node token. The token must be a public key indexed in the vault file. 
 
-The service will try to connect to trusted nodes to sync state and if successfull candidate to become a validator. 
+The service will try to connect to trusted nodes to sync state and, if successfull, candidate to become a validator. 
 
 #### Personalized breeze configuration
 
-In order to configure a personalized breeze network one has to provide more detailed information. Besides providing the information in the configuration above (possibly with other ports), one has to provide information about the network. First one has to define the permission schema and the breeze parameter in the form. 
+In order to configure a personalized breeze network more detailed information must be provided. Besides the information in the configuration above (possibly with other ports), information about the network must also be provided. First step is defining the permission schema and the breeze parameter in the form: 
 
 ```
 {
@@ -199,7 +193,7 @@ In order to configure a personalized breeze network one has to provide more deta
 }
 ```
 
-For the permission config it can be a proof-of-authority
+The permission config can be a proof-of-authority
 
 ```
 {
@@ -209,7 +203,9 @@ For the permission config it can be a proof-of-authority
 }
 ```
 
-In this case, only nodes with the secret keys associated with the tokens can candidate to become validators. Alternatively, one can define a proof-of-stake permission
+In this case, only nodes with the secret keys associated with the tokens can candidate to become validators. 
+
+Alternatively, permission configuration can be proof-of-stake
 
 ```
 {
@@ -219,7 +215,7 @@ In this case, only nodes with the secret keys associated with the tokens can can
 }
 ```
 
-where anyone with __minimumStake__ deposited is elebigible to candidate for a validator.
+where anyone providing a __minimumStake__ deposit is elebigible to candidate for a validator.
 
 If the permission field is left empty the network will be permissionless, and anyone can candidate to become a validator. 
 
@@ -244,7 +240,7 @@ With respect to the breeze configuration there are several paramenters to be def
 
 Significance of swell parameters can be found in the [swell algorithm specification](/consensus/bft/README.md). 
 
-If the network is starting from genesis its parameters creating the __aero__ fungible tokens and their initial distribution must also be specified: 
+If starting from genesis network parameters for creating the __aero__ fungible tokens and their initial distribution must also be specified: 
 
 ```
     ... (root config) ...
@@ -260,11 +256,9 @@ If the network is starting from genesis its parameters creating the __aero__ fun
     }
 ```
 
-<br/>
+Refer to the Itamambuca testnet [configuration]() for a comprehensive example.
 
-One can check the Itamambuca testnet [configuration]() for a comprehensive example.
-
-Whenever genesis is specified blow will initiate a new blockchain from scratch. When not specified blow will look for state syncrhonization from trusted nodes. If neither genesis nor trusted nodes are specified blow will terminate with an error.
+Whenever genesis is specified, blow will initiate a new blockchain from scratch. When not specified, blow will look for state synchronization from trusted nodes. If neither genesis nor trusted nodes are specified, blow will terminate with an error.
 
 ## Running beat
 
@@ -276,7 +270,7 @@ beat <path-to-beat-config.json>
 
 #### Beat Configuration
 
-Basic configutation for a beat gateway on a standard breeze network (both Paúba and Itamambuca testnets) are:
+Basic configuration for a beat gateway on a standard breeze network (both Paúba and Itamambuca testnets) is of the form:
 
 ```
 {
@@ -296,11 +290,11 @@ Basic configutation for a beat gateway on a standard breeze network (both Paúba
 }
 ```
 
-Gateway will try to connect to trusted nodes to receive information about the current pool of validators and connect to them to provide gateway funcionality. The firewall rule specifices who can connect to the beat node on the specified "port". 
+Gateway will try to connect to trusted nodes to receive information about the current pool of validators and connect to them to provide gateway functionality. The firewall rule specifies who can connect to the beat node on the "port" appointed. 
 
-In case beat is used to route action for a non standard breeze network an aditional field "breeze" must be specified according to the prescription of the blow module above. 
+In case beat is used to route action for a non standard breeze network, an aditional field "breeze" must be specified according to the prescription of the blow module above. 
 
-In case the gateway offers the service to pay for clearing fees in the network an additional wallet field must be specified. If specified beat will dress all received actions with its wallet and pay its perceived market rate for fees (algorithm not yet implemented). 
+In case the gateway offers the service to pay for clearing fees in the network, an additional wallet field must be specified. When specified, beat will dress all received actions with its wallet and pay its perceived market rate for fees (algorithm not yet implemented). 
 
 ```
 {
@@ -311,18 +305,15 @@ In case the gateway offers the service to pay for clearing fees in the network a
 
 Like blow, after running beat with the configuration file, kite must be used to share secret keys associated with the node token and wallet token. 
 
-                                                                               
 ## Running echo
 
 Echo block storage service can be executed linking to an echo config file:
 
-
 **`echo <path-to-echo-config.json>`**
-
 
 #### Echo Configuration
 
-Basic configutation for an echo storage service on a standard breeze network (both Paúba and Itamambuca testnets) are:
+Basic configuration for an echo storage service on a standard breeze network (both Paúba and Itamambuca testnets) is of the form:
 
 ```
 {
@@ -330,7 +321,7 @@ Basic configutation for an echo storage service on a standard breeze network (bo
     "port": 5420, 
     "adminPort": 5423,
     "logPath": "empty for standard logging, or path to folder for file logging",
-    "storagePath": "path to a folder to save block history and its indexes",
+    "storagePath": "path to folder to save block history and its indexes",
     "indexed": true,
     "blocksPort": 5405,
     "firewall": { node firewall configuration },
@@ -341,10 +332,9 @@ Basic configutation for an echo storage service on a standard breeze network (bo
         }, ...
     ]
 }
-
 ```
 
-If indexed is set to false, it will only serve as a block storage and will only provide entire blocks. If indexed is set to true, it will index actions by token and can send action history associated to those tokens. 
+If "indexed" is set to false, it will serve as a block storage and providing only entire blocks. If "indexed" is set to true, it will index actions by token and can send action history associated to referred tokens. 
 
 Echo will connect to trusted nodes to receive information about the current pool of validators and connect to them to receive new blocks from them. 
 
@@ -365,9 +355,6 @@ Breeze is, itself, an ongoing project inside the Synergy protocol. To collaborat
 #### Github
 
 The freehandle sponsored implementation of the breeze protocol and the primitive social protocols will be developed on the [freehandle](https://github.com/freehandle) repositories on github. 
-
-
-
 
 ## License
 
