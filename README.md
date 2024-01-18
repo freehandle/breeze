@@ -4,17 +4,15 @@ Official implementation of the breeze protocol and associated utilities.
 
 For a description of the breeze protocol see [breeze presentation](https://github.com/freehandle/breeze/blob/main/breezedoc.md).
 
+This file is about running breeze network infrastructure. For instructions about deploying specialized protocols on top of breeze network please refer to [social protocol documentation](https://github.com/freehandle/breeze/middleware/social/README.md).
+
 ## Building the source
 
 Building blow requires a Go compiler (1.21 or later). You can install it using your favorite package manager. Once it is installed, run
 
-**`make blow`**
-
-to build only the blow validator, or 
-
 **`make all`**
 
-to build all executable within cmd folder. 
+to build all executables within cmd folder. Otherwise it is possible to compile one by one using standard go toolchain procedures.  
 
 ## Executables
 
@@ -29,7 +27,7 @@ Breeze network usage relies on four independent services, found in cmd folder, e
 
 ## Modular architecture
 
-Breeze was designed to provide three main services, uncoupled. 
+Breeze is designed to provide three main services, uncoupled. 
 
 1. The first service encompasses block creation and consensus. 
    
@@ -76,7 +74,8 @@ With these three services, and given the void action prescribed by the breeze pr
 ## Kite module overview
 
 Kite module is used for remote administration of modules and to send actions to 
-breeze network. Detailed information is found [below](#safe-full-command-list).
+breeze network. 
+
 Basic usage:
 
 To create a new vault for secrets safekeeping
@@ -118,6 +117,13 @@ Where <node-id> is used to refer to the node in the administration commands. For
 ```
 kite <path-to-exisitng-vault-file> [grant|revoke] <node-id> <token> [gateway|block] (description)
 ```
+
+Detailed information about these and other funcionalities can be found in the kite help command.
+
+```
+kite help
+```
+
 
 ## Running blow
 
