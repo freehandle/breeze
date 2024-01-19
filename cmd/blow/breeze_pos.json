@@ -29,8 +29,8 @@
 			"throughput": 5000,
 			"maxConnections": 100,
 			"firewall": {
-				"openRelay": false,
-				"whitelist": [ "dbc43a4695df777ea27f9699fbf346b2ff259f9c90815d864a9c98b4c787cf17" ]
+				"open": false,
+				"tokenList": [ "dbc43a4695df777ea27f9699fbf346b2ff259f9c90815d864a9c98b4c787cf17" ]
 			}
 		},
 		"blockStorage": {

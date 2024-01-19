@@ -81,10 +81,10 @@ func (c BreezeConfig) Check() error {
 }
 
 func (c FirewallConfig) Check() error {
-	if c.OpenRelay && len(c.Whitelist) > 0 {
+	if c.Open && len(c.TokenList) > 0 {
 		return errors.New("cannot have both an open relay and a whitelist")
 	}
-	for _, peer := range c.Whitelist {
+	for _, peer := range c.TokenList {
 		if crypto.TokenFromString(peer).Equal(crypto.ZeroToken) {
 			return errors.New("invalid whitelist token")
 		}

@@ -127,9 +127,9 @@ type GenesisConfig struct {
 }
 
 type FirewallConfig struct {
-	OpenRelay bool // `json:"openRelay"`
-	// Whitelist is a list of addresses that are allowed to connect to the node
-	Whitelist []string // `json:"whitelist"`
+	Open bool // `json:"open"`
+	// TokenList is a list of addresses that are allowed to connect to the node
+	TokenList []string // `json:"tokenList"`
 }
 
 type RelayConfig struct {
@@ -200,13 +200,13 @@ func StandardPOABreezeConfig(authority crypto.Token) NetworkConfig {
 
 func FirewallToValidConnections(f FirewallConfig) *socket.AcceptValidConnections {
 	tokens := make([]crypto.Token, 0)
-	for _, tokenStr := range f.Whitelist {
+	for _, tokenStr := range f.TokenList {
 		token := crypto.TokenFromString(tokenStr)
 		if token != crypto.ZeroToken {
 			tokens = append(tokens, token)
 		}
 	}
-	return socket.NewValidConnections(tokens, f.OpenRelay)
+	return socket.NewValidConnections(tokens, f.Open)
 }
 
 func PeersToTokenAddr(peers []Peer) []socket.TokenAddr {

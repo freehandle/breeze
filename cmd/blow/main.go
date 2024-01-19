@@ -143,21 +143,21 @@ func RelayNode(ctx context.Context, config *NodeConfig, secret crypto.PrivateKey
 
 func RelayFromConfig(ctx context.Context, config *NodeConfig, pk crypto.PrivateKey) relay.Config {
 	listGateways := make([]crypto.Token, 0)
-	for _, peer := range config.Relay.Gateway.Firewall.Whitelist {
+	for _, peer := range config.Relay.Gateway.Firewall.TokenList {
 		if token := crypto.TokenFromString(peer); !token.Equal(crypto.ZeroToken) {
 			listGateways = append(listGateways, token)
 		}
 	}
 	listBlockListeners := make([]crypto.Token, 0)
-	for _, peer := range config.Relay.BlockStorage.Firewall.Whitelist {
+	for _, peer := range config.Relay.BlockStorage.Firewall.TokenList {
 		if token := crypto.TokenFromString(peer); !token.Equal(crypto.ZeroToken) {
 			listBlockListeners = append(listBlockListeners, token)
 		}
 	}
 
 	firewall := relay.Firewall{
-		AcceptGateway:       socket.NewValidConnections(listGateways, config.Relay.Gateway.Firewall.OpenRelay),
-		AcceptBlockListener: socket.NewValidConnections(listBlockListeners, config.Relay.BlockStorage.Firewall.OpenRelay),
+		AcceptGateway:       socket.NewValidConnections(listGateways, config.Relay.Gateway.Firewall.Open),
+		AcceptBlockListener: socket.NewValidConnections(listBlockListeners, config.Relay.BlockStorage.Firewall.Open),
 	}
 
 	return relay.Config{

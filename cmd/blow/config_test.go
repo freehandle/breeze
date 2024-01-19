@@ -93,13 +93,13 @@ func TestConfigParse(t *testing.T) {
 	if c.Relay.Gateway.Throughput != 5000 {
 		t.Error("Gateway.Throughput field not parsed correctly")
 	}
-	if c.Relay.Gateway.Firewall.OpenRelay {
+	if c.Relay.Gateway.Firewall.Open {
 		t.Error("Gateway.Firewall.OpenRelay field not parsed correctly")
 	}
-	if len(c.Relay.Gateway.Firewall.Whitelist) != 1 {
+	if len(c.Relay.Gateway.Firewall.TokenList) != 1 {
 		t.Error("Gateway.Firewall.Whitelist field not parsed correctly")
 	}
-	if c.Relay.Gateway.Firewall.Whitelist[0] != token {
+	if c.Relay.Gateway.Firewall.TokenList[0] != token {
 		t.Error("Gateway.Firewall.Whitelist[0].Token field not parsed correctly")
 	}
 	if c.Relay.BlockStorage.Port != 5405 {
@@ -111,7 +111,7 @@ func TestConfigParse(t *testing.T) {
 	if !c.Relay.BlockStorage.IndexWallets {
 		t.Error("BlockStorage.IndexWallets filed not parsed correctly")
 	}
-	if !c.Relay.BlockStorage.Firewall.OpenRelay {
+	if !c.Relay.BlockStorage.Firewall.Open {
 		t.Error("BlockStorage.Firewall.OpenRelay filed not parsed correctly")
 	}
 	if len(c.Genesis.Wallets) != 1 {
