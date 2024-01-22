@@ -111,8 +111,8 @@ type BreezeConfig struct {
 
 type GenesisWallet struct {
 	Token   string // `json:"token"`
-	Wallet  int    // `json:"amount"`
-	Deposit int    // `json:"deposited"`
+	Wallet  int    // `json:"wallet"`
+	Deposit int    // `json:"deposit"`
 }
 
 type Peer struct {
