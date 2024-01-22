@@ -115,7 +115,7 @@ func main() {
 		cancel()
 		os.Exit(1)
 	}
-	blocks.NewListener(ctx, adm, listenerCfg)
+	blocks.NewBreezeListener(ctx, adm, listenerCfg)
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	<-c

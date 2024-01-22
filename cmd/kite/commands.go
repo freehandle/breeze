@@ -36,6 +36,15 @@ func parseCommandArgs(cmd byte, args []string) Command {
 			TempToken: args[1],
 			Token:     args[2],
 		}
+	case generateCmd:
+		if len(args) < 2 {
+			fmt.Println("insufficient arguments")
+			return nil
+		}
+		return &GenerateCommand{
+			Id:          args[0],
+			Description: args[1],
+		}
 	case registerCmd:
 		if len(args) < 4 {
 			fmt.Println("insufficient arguments")
@@ -392,4 +401,15 @@ func dialAdmin(safe *Kite, nodeID string) (*admin.AdminClient, error) {
 		return nil, fmt.Errorf("could not connect to admin node %v: %v", tokenAddr.Token, err)
 	}
 	return admin, nil
+}
+
+type GenerateCommand struct {
+	Id          string
+	Description string
+}
+
+func (c *GenerateCommand) Execute(vault *Kite) error {
+	token, _ := vault.GenerateNewKey(c.Id, c.Description)
+	fmt.Printf("New token: %v\n", token)
+	return nil
 }
