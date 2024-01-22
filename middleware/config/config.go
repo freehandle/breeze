@@ -150,10 +150,6 @@ type GatewayConfig struct {
 type BlockStorageConfig struct {
 	Port int // `json:"port"`
 	// Directory to storage block history
-	StoragePath string // `json:"storagePath"`
-	// Indicate if an index of tokens should be mantained
-	IndexWallets bool // `json:"indexWallets"
-	// Max number of simultaneous connections
 	MaxConnections int // `json:"maxConnections"`
 	// Firewall rules
 	Firewall FirewallConfig

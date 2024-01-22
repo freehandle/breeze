@@ -130,9 +130,6 @@ func (c RelayConfig) Check() error {
 	if c.Blocks.Port < 1024 || c.Blocks.Port > 49151 {
 		return fmt.Errorf("BlockStorage.Port must be between 1024 and 49151")
 	}
-	if err := IsValidDir(c.Blocks.StoragePath, "block storage"); err != nil {
-		return err
-	}
 	if c.Blocks.MaxConnections < 1 {
 		return fmt.Errorf("BlockStorage.MaxConnections must be at least 1: got %v", c.Blocks.MaxConnections)
 	}
