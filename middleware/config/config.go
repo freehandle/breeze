@@ -133,8 +133,8 @@ type FirewallConfig struct {
 }
 
 type RelayConfig struct {
-	Gateway      GatewayConfig      // `json:"gateway"`
-	BlockStorage BlockStorageConfig // `json:"blockStorage"`
+	Gateway GatewayConfig      // `json:"gateway"`
+	Blocks  BlockStorageConfig // `json:"blocks"`
 }
 
 type GatewayConfig struct {

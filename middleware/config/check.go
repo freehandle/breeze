@@ -81,9 +81,6 @@ func (c BreezeConfig) Check() error {
 }
 
 func (c FirewallConfig) Check() error {
-	if c.Open && len(c.TokenList) > 0 {
-		return errors.New("cannot have both an open relay and a whitelist")
-	}
 	for _, peer := range c.TokenList {
 		if crypto.TokenFromString(peer).Equal(crypto.ZeroToken) {
 			return errors.New("invalid whitelist token")
@@ -130,16 +127,16 @@ func (c RelayConfig) Check() error {
 	if err := c.Gateway.Firewall.Check(); err != nil {
 		return fmt.Errorf("Gateway.Firewall %v", err)
 	}
-	if c.BlockStorage.Port < 1024 || c.BlockStorage.Port > 49151 {
+	if c.Blocks.Port < 1024 || c.Blocks.Port > 49151 {
 		return fmt.Errorf("BlockStorage.Port must be between 1024 and 49151")
 	}
-	if err := IsValidDir(c.BlockStorage.StoragePath, "block storage"); err != nil {
+	if err := IsValidDir(c.Blocks.StoragePath, "block storage"); err != nil {
 		return err
 	}
-	if c.BlockStorage.MaxConnections < 1 {
-		return fmt.Errorf("BlockStorage.MaxConnections must be at least 1: got %v", c.BlockStorage.MaxConnections)
+	if c.Blocks.MaxConnections < 1 {
+		return fmt.Errorf("BlockStorage.MaxConnections must be at least 1: got %v", c.Blocks.MaxConnections)
 	}
-	if err := c.BlockStorage.Firewall.Check(); err != nil {
+	if err := c.Blocks.Firewall.Check(); err != nil {
 		return fmt.Errorf("BlockStorage.Firewall %v", err)
 	}
 	return nil

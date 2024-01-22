@@ -102,16 +102,16 @@ func TestConfigParse(t *testing.T) {
 	if c.Relay.Gateway.Firewall.TokenList[0] != token {
 		t.Error("Gateway.Firewall.Whitelist[0].Token field not parsed correctly")
 	}
-	if c.Relay.BlockStorage.Port != 5405 {
+	if c.Relay.Blocks.Port != 5405 {
 		t.Error("BlockStorage.Port filed not parsed correctly")
 	}
-	if c.Relay.BlockStorage.StoragePath != "/var/breeze/blocks" {
+	if c.Relay.Blocks.StoragePath != "/var/breeze/blocks" {
 		t.Error("BlockStorage.StoragePath filed not parsed correctly")
 	}
-	if !c.Relay.BlockStorage.IndexWallets {
+	if !c.Relay.Blocks.IndexWallets {
 		t.Error("BlockStorage.IndexWallets filed not parsed correctly")
 	}
-	if !c.Relay.BlockStorage.Firewall.Open {
+	if !c.Relay.Blocks.Firewall.Open {
 		t.Error("BlockStorage.Firewall.OpenRelay filed not parsed correctly")
 	}
 	if len(c.Genesis.Wallets) != 1 {
