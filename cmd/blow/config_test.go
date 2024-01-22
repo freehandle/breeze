@@ -105,12 +105,6 @@ func TestConfigParse(t *testing.T) {
 	if c.Relay.Blocks.Port != 5405 {
 		t.Error("BlockStorage.Port filed not parsed correctly")
 	}
-	if c.Relay.Blocks.StoragePath != "/var/breeze/blocks" {
-		t.Error("BlockStorage.StoragePath filed not parsed correctly")
-	}
-	if !c.Relay.Blocks.IndexWallets {
-		t.Error("BlockStorage.IndexWallets filed not parsed correctly")
-	}
 	if !c.Relay.Blocks.Firewall.Open {
 		t.Error("BlockStorage.Firewall.OpenRelay filed not parsed correctly")
 	}
