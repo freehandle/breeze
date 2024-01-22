@@ -154,6 +154,7 @@ When "open" is set to __true__ the firewall will by default allow all connection
         "gateway": {
             "port": 5404,
             "throughput": 15000,
+            "maxConnections" : <any number of connections>,
             "firewall": { firewall configuration (see above) }
         },
         blocks": {
