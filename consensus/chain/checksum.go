@@ -22,11 +22,13 @@ func (c *Blockchain) MarkCheckpoint() {
 			slog.Error("MarkChekpoint: cloned state is nil")
 			return
 		}
+		checksumHash := clonedState.ChecksumHash()
+		checksumHash = crypto.Hasher(append(util.Uint64ToBytes(epoch), checksumHash[:]...))
 		c.NextChecksum = &Checksum{
 			Epoch:         epoch,
 			State:         clonedState,
 			LastBlockHash: hash,
-			Hash:          clonedState.ChecksumHash(),
+			Hash:          checksumHash,
 		}
 		c.Cloning = false
 		slog.Info("Blockchain: checkpoint calculation job completed", "epoch", c.NextChecksum.Epoch, "last block", c.NextChecksum.LastBlockHash, "cehckpoint hash", c.NextChecksum.Hash)
