@@ -14,6 +14,11 @@ import (
 	"github.com/freehandle/breeze/util"
 )
 
+type ProtocolRule struct {
+	Code    uint32
+	IndexFn func([]byte) []crypto.Hash
+}
+
 type Config struct {
 	Credentials crypto.PrivateKey
 	DB          blockdb.DBConfig
@@ -23,7 +28,7 @@ type Config struct {
 	Hostname    string
 	Sources     []socket.TokenAddr
 	PoolSize    int
-	Protocol    uint32
+	Protocol    *ProtocolRule
 }
 
 type Server struct {
@@ -58,9 +63,24 @@ func NewServer(ctx context.Context, adm *admin.Administration, config Config) (*
 		return nil, err
 	}
 
-	if config.Protocol == 0 {
-		NewBreezeListener(ctx, adm, config)
-
+	if config.Protocol == nil {
+		standByNode, err := BreezeListener(ctx, config)
+		if err != nil {
+			cancel()
+			return nil, err
+		}
+		listener.provider = BreezeStandardProvider(ctx, standByNode)
+	} else {
+		sources := socket.NewTrustedAgregator(ctx, config.Hostname, config.Credentials, config.PoolSize, config.Sources, nil)
+		if sources == nil {
+			cancel()
+			return nil, fmt.Errorf("failed to connect to sources")
+		}
+		listener.provider = SocialIndexerProvider(ctx, config.Protocol.Code, sources, config.Protocol.IndexFn)
+	}
+	if listener.provider == nil {
+		cancel()
+		return nil, fmt.Errorf("failed to create chain of block providers")
 	}
 
 	go func() {
@@ -132,41 +152,27 @@ func BreezeListener(ctx context.Context, config Config) (*swell.StandByNode, err
 	if config.Firewall == nil {
 		return nil, fmt.Errorf("firewall config required")
 	}
-	ctx, cancel := context.WithCancel(ctx)
-cfg := swell.ValidatorConfig{
-	Credentials:    config.Credentials,
-	WalletPath:     "",
-	Hostname:       "localhost",
-	TrustedGateway: config.Sources,
-}
-listener := &BreezeListenerNode{
-	Credentials: config.Credentials,
-	recent:      make([]*chain.CommitBlock, 0, config.keepN),
-	firewall:    config.Firewall,
-	keepN:       config.keepN,
-}
-var err error
-listener.db, err = blockdb.NewBlockchainHistory(config.DB)
-if err != nil {
-	cancel()
-	return nil, err
-}
-newConnListener, err := socket.Listen(fmt.Sprintf("%s:%d", config.Hostname, config.Port))
-if err != nil {
-	cancel()
-	return nil, err
-}
-standBy := make(chan *swell.StandByNode)
-connectedToNetwork := false
-for _, source := range config.Sources {
-	err = swell.FullSyncValidatorNode(ctx, cfg, source, standBy)
-	if err == nil {
-		connectedToNetwork = true
-		break
+	cfg := swell.ValidatorConfig{
+		Credentials:    config.Credentials,
+		WalletPath:     "",
+		Hostname:       config.Hostname,
+		TrustedGateway: config.Sources,
 	}
+
+	standBy := make(chan *swell.StandByNode)
+	connectedToNetwork := false
+	for _, source := range config.Sources {
+		if err := swell.FullSyncValidatorNode(ctx, cfg, source, standBy); err == nil {
+			connectedToNetwork = true
+			break
+		}
+	}
+	if !connectedToNetwork {
+		return nil, fmt.Errorf("could not connect to network")
+	}
+	node := <-standBy
+	if node == nil {
+		return nil, fmt.Errorf("could not connect to network")
+	}
+	return node, nil
 }
-if !connectedToNetwork {
-	cancel()
-	return nil, fmt.Errorf("could not connect to network")
-}
-listener.Standby = <-standBy
