@@ -74,12 +74,12 @@ func DialCtx(ctx context.Context, hostname, address string, credentials crypto.P
 // listener for testing. It returns nil and a error if it cannot bind on the
 // on the port.
 func Listen(address string) (net.Listener, error) {
-	hostname, _, err := net.SplitHostPort(address)
+	hostname, port, err := net.SplitHostPort(address)
 	if err != nil {
 		return nil, err
 	}
 	if hostname == "" || hostname == "localhost" {
-		return net.Listen("tcp", address)
+		return net.Listen("tcp", fmt.Sprintf(":%d", port))
 	} else {
 		return TCPNetworkTest.Listen(address)
 	}
