@@ -1,17 +1,6 @@
 package blocks
 
-import (
-	"context"
-	"sync"
-
-	"github.com/freehandle/breeze/crypto"
-	"github.com/freehandle/breeze/middleware/blockdb"
-	"github.com/freehandle/breeze/middleware/social"
-	"github.com/freehandle/breeze/socket"
-	"github.com/freehandle/breeze/util"
-)
-
-type SocialBlockProvider struct {
+/*type SocialBlockProvider struct {
 	mu         sync.Mutex
 	recent     []*social.SocialBlock
 	LastEvents *util.Await
@@ -108,3 +97,4 @@ func NewSocialBlockProvider(ctx context.Context, protocol uint32, indexFn func([
 		}
 	}()
 }
+*/
