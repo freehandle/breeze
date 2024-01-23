@@ -6,6 +6,7 @@ all:
 	go mod tidy
 	go build -o ./build/blow ./cmd/blow 
 	go build -o ./build/beat ./cmd/beat
+	go build -o ./build/echo ./cmd/echo
 	go build -o ./build/kite ./cmd/kite
 
 kite:
