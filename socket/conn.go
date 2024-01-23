@@ -79,7 +79,7 @@ func Listen(address string) (net.Listener, error) {
 		return nil, err
 	}
 	if hostname == "" || hostname == "localhost" {
-		return net.Listen("tcp", fmt.Sprintf(":%d", port))
+		return net.Listen("tcp", fmt.Sprintf(":%s", port))
 	} else {
 		return TCPNetworkTest.Listen(address)
 	}
