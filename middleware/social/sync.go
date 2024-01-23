@@ -28,10 +28,10 @@ func getClockSync(conn *socket.SignedConnection) (chain.ClockSyncronization, boo
 	return clock, true
 }
 
-func SyncSocialState[M Merger[M], B Blocker[M]](cfg Configuration, newState func([]byte) (Stateful[M, B], bool)) (*socket.SignedConnection, *Checksum[M, B], chain.ClockSyncronization, error) {
+func SyncSocialState[M Merger[M], B Blocker[M]](cfg Configuration, peers []socket.TokenAddr, newState func([]byte) (Stateful[M, B], bool)) (*socket.SignedConnection, *Checksum[M, B], chain.ClockSyncronization, error) {
 	var conn *socket.SignedConnection
 	var err error
-	for _, source := range cfg.TrustedProviders {
+	for _, source := range peers {
 		addr := fmt.Sprintf("%v:%v", source.Addr, cfg.BlocksSourcePort)
 		conn, err = socket.Dial(cfg.Hostname, addr, cfg.Credentials, source.Token)
 		if err == nil {

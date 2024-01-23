@@ -6,25 +6,31 @@ import (
 	"net"
 	"time"
 
+	"github.com/freehandle/breeze/consensus/chain"
 	"github.com/freehandle/breeze/consensus/messages"
 	"github.com/freehandle/breeze/socket"
 	"github.com/freehandle/breeze/util"
 )
 
-func LaunchNode[M Merger[M], B Blocker[M]](ctx context.Context, cfg Configuration, newState StateFromBytes[M, B]) chan error {
+func LaunchNodeFromState[M Merger[M], B Blocker[M]](ctx context.Context, cfg Configuration, checksum *Checksum[M, B], clock chain.ClockSyncronization) chan error {
+	return launchNodeFromStateWithConnection[M, B](ctx, cfg, checksum, clock, nil)
+}
+
+func launchNodeFromStateWithConnection[M Merger[M], B Blocker[M]](ctx context.Context, cfg Configuration, checksum *Checksum[M, B], clock chain.ClockSyncronization, existingConnection *socket.SignedConnection) chan error {
 	finalize := make(chan error, 2)
 
-	outgoing, err := net.Listen("tcp", fmt.Sprintf("%s:%f", cfg.Hostname, cfg.BlocksTargetPort))
+	outgoing, err := net.Listen("tcp", fmt.Sprintf("%s:%d", cfg.Hostname, cfg.BlocksTargetPort))
 	if err != nil {
 		finalize <- fmt.Errorf("could not listen on port %v: %v", cfg.BlocksTargetPort, err)
 		return finalize
 	}
-
-	conn, checksum, clock, err := SyncSocialState[M, B](cfg, newState)
+	/*conn, checksum, clock, err := SyncSocialState[M, B](cfg, newState)
 	if err != nil {
 		finalize <- fmt.Errorf("could not sync state: %v", err)
 		return finalize
 	}
+	*/
+
 	ticker := time.NewTicker(clock.Timer(cfg.RootBlockInterval))
 
 	blockchain := NewSocialBlockChain[M, B](cfg, checksum)
@@ -33,10 +39,10 @@ func LaunchNode[M Merger[M], B Blocker[M]](ctx context.Context, cfg Configuratio
 		return finalize
 	}
 	engine := NewEngine[M, B](ctx, blockchain)
-	sources := socket.NewTrustedAgregator(ctx, cfg.Hostname, cfg.Credentials, cfg.ProvidersSize, cfg.TrustedProviders, nil, conn)
+	sources := socket.NewTrustedAgregator(ctx, cfg.Hostname, cfg.Credentials, cfg.ProvidersSize, cfg.TrustedProviders, nil, existingConnection)
 
 	// connect sources to blockchain engine
-	SocialProtocolBlockListener(ctx, cfg, sources, engine.block, engine.commit)
+	SocialProtocolBlockListener(ctx, cfg.ParentProtocolCode, sources, engine.block, engine.commit)
 
 	syncRequest := make(chan BlockSyncRequest)
 
@@ -90,6 +96,16 @@ func LaunchNode[M Merger[M], B Blocker[M]](ctx context.Context, cfg Configuratio
 
 	return finalize
 
+}
+
+func LaunchSyncNode[M Merger[M], B Blocker[M]](ctx context.Context, cfg Configuration, peers []socket.TokenAddr, newState StateFromBytes[M, B]) chan error {
+	conn, checksum, clock, err := SyncSocialState[M, B](cfg, peers, newState)
+	if err != nil {
+		finalize := make(chan error, 1)
+		finalize <- fmt.Errorf("could not sync state: %v", err)
+		return finalize
+	}
+	return launchNodeFromStateWithConnection[M, B](ctx, cfg, checksum, clock, conn)
 }
 
 type BlockSyncRequest struct {

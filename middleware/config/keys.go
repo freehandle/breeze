@@ -26,6 +26,7 @@ func waitForRemoteKeysSyncWithTempKey(ctx context.Context, tokens []crypto.Token
 	withcancel, cancel := context.WithCancel(ctx)
 	go func() {
 		<-withcancel.Done()
+		fmt.Println("closing listener")
 		listener.Close()
 	}()
 
@@ -39,9 +40,11 @@ func waitForRemoteKeysSyncWithTempKey(ctx context.Context, tokens []crypto.Token
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
+			fmt.Println("deu ruim")
 			cancel()
 			break
 		}
+		fmt.Println("tamu aqui")
 		trusted, err := socket.PromoteConnection(conn, tempKey, firewall)
 		if err != nil {
 			fmt.Printf("admin connection rejected: %v\n", err)

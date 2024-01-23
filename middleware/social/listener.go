@@ -22,19 +22,6 @@ const (
 	CommitSignal
 )
 
-type BlockSignal struct {
-	Signal     byte
-	Epoch      uint64
-	Checkpoint uint64
-	Hash       crypto.Hash
-	HashArray  []crypto.Hash
-	Token      crypto.Token
-	Signature  crypto.Signature
-	Action     []byte
-	Actions    *chain.ActionArray
-	Err        error
-}
-
 type Node struct {
 	Address string
 	Token   crypto.Token
@@ -133,9 +120,9 @@ type listener interface {
 	Close()
 }
 
-func SocialProtocolBlockListener(ctx context.Context, cfg Configuration, sources *socket.TrustedAggregator, blocks chan *SocialBlock, commits chan *SocialBlockCommit) {
+func SocialProtocolBlockListener(ctx context.Context, parentProtocolCode uint32, sources *socket.TrustedAggregator, blocks chan *SocialBlock, commits chan *SocialBlockCommit) {
 	var listener listener
-	if cfg.ParentProtocolCode == 0 {
+	if parentProtocolCode == 0 {
 		listener = &breezeListener{
 			blocks:  blocks,
 			commits: commits,
@@ -144,7 +131,7 @@ func SocialProtocolBlockListener(ctx context.Context, cfg Configuration, sources
 		listener = &socialListener{
 			blocks:  blocks,
 			commits: commits,
-			code:    cfg.ParentProtocolCode,
+			code:    parentProtocolCode,
 		}
 	}
 	withCancel, cancel := context.WithCancel(ctx)

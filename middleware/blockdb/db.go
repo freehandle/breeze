@@ -3,10 +3,8 @@ package blockdb
 import (
 	"path/filepath"
 
-	"github.com/freehandle/breeze/consensus/chain"
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/middleware/blockdb/index"
-	"github.com/freehandle/breeze/protocol/actions"
 	"github.com/freehandle/breeze/util"
 )
 
@@ -71,7 +69,32 @@ type BlockchainHistory struct {
 	Index   *index.Index
 }
 
-func (b *BlockchainHistory) Incorporate(commit *chain.CommitBlock) error {
+type IndexItem struct {
+	Hash   crypto.Hash
+	Offset int
+}
+
+type IndexedBlock struct {
+	Epoch uint64
+	Data  []byte
+	Items []IndexItem
+}
+
+func (b *BlockchainHistory) IncorporateBlock(indexed *IndexedBlock) error {
+	err := b.Storage.AppendBlock(indexed.Data, int64(indexed.Epoch))
+	if err != nil {
+		return err
+	}
+	if b.Index == nil {
+		return nil
+	}
+	for _, item := range indexed.Items {
+		b.Index.Append(item.Hash, indexed.Epoch, item.Offset)
+	}
+	return nil
+}
+
+/*func (b *BlockchainHistory) Incorporate(commit *chain.CommitBlock) error {
 	err := b.Storage.AppendBlock(commit.Serialize(), int64(commit.Header.Epoch))
 	if err != nil {
 		return err
@@ -99,6 +122,7 @@ func (b *BlockchainHistory) Incorporate(commit *chain.CommitBlock) error {
 	}
 	return nil
 }
+*/
 
 func (b *BlockchainHistory) Retrieve(epoch int64, offset int64) []byte {
 	if b.Storage == nil {

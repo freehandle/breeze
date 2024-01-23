@@ -1,15 +1,8 @@
 package blocks
 
 import (
-	"context"
-	"fmt"
-	"log/slog"
-	"sync"
-
-	"github.com/freehandle/breeze/consensus/chain"
 	"github.com/freehandle/breeze/consensus/swell"
 	"github.com/freehandle/breeze/crypto"
-	"github.com/freehandle/breeze/middleware/admin"
 	"github.com/freehandle/breeze/middleware/blockdb"
 	"github.com/freehandle/breeze/socket"
 )
@@ -25,7 +18,8 @@ type ListenerConfig struct {
 	keepN       int
 }
 
-type ListenerNode struct {
+/*
+type BreezeListenerNode struct {
 	mu              sync.Mutex
 	Credentials     crypto.PrivateKey
 	LastCommitEpoch uint64
@@ -38,7 +32,7 @@ type ListenerNode struct {
 	keepN           int
 }
 
-func NewListener(ctx context.Context, adm *admin.Administration, config ListenerConfig) (*ListenerNode, error) {
+func NewBreezeListener(ctx context.Context, adm *admin.Administration, config ListenerConfig) (*BreezeListenerNode, error) {
 	if config.Firewall == nil {
 		return nil, fmt.Errorf("firewall config required")
 	}
@@ -49,7 +43,7 @@ func NewListener(ctx context.Context, adm *admin.Administration, config Listener
 		Hostname:       "localhost",
 		TrustedGateway: config.Sources,
 	}
-	listener := &ListenerNode{
+	listener := &BreezeListenerNode{
 		Credentials: config.Credentials,
 		recent:      make([]*chain.CommitBlock, 0, config.keepN),
 		firewall:    config.Firewall,
@@ -134,7 +128,7 @@ func NewListener(ctx context.Context, adm *admin.Administration, config Listener
 	return listener, nil
 }
 
-func (b *ListenerNode) Broadcast(data []byte) {
+func (b *BreezeListenerNode) Broadcast(data []byte) {
 	b.mu.Lock()
 	pool := make([]*socket.SignedConnection, len(b.live))
 	copy(pool, b.live)
@@ -150,7 +144,7 @@ func (b *ListenerNode) Broadcast(data []byte) {
 	}()
 }
 
-func (b *ListenerNode) IncorporateBlocks(blocks []*chain.CommitBlock) error {
+func (b *BreezeListenerNode) IncorporateBlocks(blocks []*chain.CommitBlock) error {
 	for _, block := range blocks {
 		err := b.db.Incorporate(block)
 		if err != nil {
@@ -166,10 +160,11 @@ func (b *ListenerNode) IncorporateBlocks(blocks []*chain.CommitBlock) error {
 	return nil
 }
 
-func (b *ListenerNode) Recent() []*chain.CommitBlock {
+func (b *BreezeListenerNode) Recent() []*chain.CommitBlock {
 	b.mu.Lock()
 	blocks := make([]*chain.CommitBlock, len(b.recent))
 	copy(blocks, b.recent)
 	b.mu.Unlock()
 	return blocks
 }
+*/

@@ -19,7 +19,7 @@ const (
 	BlockHistoryResponse
 )
 
-func (l *ListenerNode) WaitForRequests(conn *socket.SignedConnection) {
+func (l *Server) WaitForRequests(conn *socket.SignedConnection) {
 	defer func() {
 		l.mu.Lock()
 		for n, poolConn := range l.live {
@@ -82,7 +82,7 @@ func ParseActionHistoryRequest(data []byte) crypto.Hash {
 	return hash
 }
 
-func (l *ListenerNode) GetActions(hash crypto.Hash, epoch uint64, seq uint32, conn *socket.SignedConnection) {
+func (l *Server) GetActions(hash crypto.Hash, epoch uint64, seq uint32, conn *socket.SignedConnection) {
 	actions := l.db.Find(hash, epoch)
 	data := []byte{ActionHistoryResponse}
 	util.PutUint32(seq, &data)
@@ -110,10 +110,10 @@ func (l *ListenerNode) GetActions(hash crypto.Hash, epoch uint64, seq uint32, co
 	}
 }
 
-func (l *ListenerNode) GetBlocks(start, end uint64, seq uint32, conn *socket.SignedConnection) {
+func (l *Server) GetBlocks(start, end uint64, seq uint32, conn *socket.SignedConnection) {
 	if end == 0 {
 		l.mu.Lock()
-		end = l.LastCommitEpoch
+		end = l.provider.Epoch
 		isNew := true
 		for _, subscriber := range l.subscribers {
 			if subscriber == conn {

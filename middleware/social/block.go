@@ -73,6 +73,17 @@ type SocialBlock struct {
 	Status          byte
 }
 
+func (s *SocialBlock) Header() []byte {
+	data := make([]byte, 0)
+	util.PutUint32(s.ProtocolCode, &data)
+	util.PutUint64(s.Epoch, &data)
+	util.PutUint64(s.Checkpoint, &data)
+	util.PutHash(s.BreezeBlock, &data)
+	PutPedigree(s.Pedigree, &data)
+	util.PutToken(s.Publisher, &data)
+	return data
+}
+
 func (s *SocialBlock) Commit() *SocialBlockCommit {
 	if s.Status != Committed {
 		return nil

@@ -9,6 +9,7 @@ import (
 
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/middleware/admin"
+	"github.com/freehandle/breeze/middleware/config"
 	"github.com/freehandle/breeze/socket"
 )
 
@@ -27,14 +28,13 @@ func parseCommandArgs(cmd byte, args []string) Command {
 			NodeId: args[0],
 		}
 	case syncCmd:
-		if len(args) < 3 {
-			fmt.Println("insufficient arguments")
+		if len(args) < 2 {
+			fmt.Println("insufficient arguments", args)
 			return nil
 		}
 		return &SyncCommand{
 			Address:   args[0],
 			TempToken: args[1],
-			Token:     args[2],
 		}
 	case generateCmd:
 		if len(args) < 2 {
@@ -227,44 +227,24 @@ func (f *FirewallCommand) Execute(safe *Kite) error {
 type SyncCommand struct {
 	Address   string
 	TempToken string
-	Token     string
 }
 
 func (c *SyncCommand) Execute(safe *Kite) error {
 	tempToken := crypto.TokenFromString(c.TempToken)
-	token := crypto.TokenFromString(c.Token)
 	if tempToken.Equal(crypto.ZeroToken) {
 		return fmt.Errorf("invalid token: %v", c.TempToken)
 	}
-	if token.Equal(crypto.ZeroToken) {
-		return fmt.Errorf("invalid token: %v", c.Token)
-	}
-	var secretKey crypto.PrivateKey
-	if safe.vault.SecretKey.PublicKey().Equal(token) {
-		secretKey = safe.vault.SecretKey
-	} else {
-		for _, wallet := range safe.WalletKeys {
-			if wallet.Secret.PublicKey().Equal(token) {
-				secretKey = wallet.Secret
-				break
-			}
-		}
-
-	}
-	if secretKey == crypto.ZeroPrivateKey {
-		return fmt.Errorf("secret for token %s not found", token)
-	}
-	tokenAddr := socket.TokenAddr{
-		Addr:  c.Address,
-		Token: tempToken,
-	}
-	admin, err := admin.DialAdmin("localhost", tokenAddr, safe.vault.SecretKey)
+	conn, err := socket.Dial("localhost", c.Address, safe.vault.SecretKey, tempToken)
 	if err != nil {
 		return fmt.Errorf("could not connect to node: %v", err)
 	}
-	err = admin.SendSecret(secretKey)
-	if err != nil {
-		return fmt.Errorf("could not exchange key: %v", err)
+	secrets := make(map[crypto.Token]crypto.PrivateKey)
+	secrets[safe.vault.SecretKey.PublicKey()] = safe.vault.SecretKey
+	for _, wallet := range safe.WalletKeys {
+		secrets[wallet.Secret.PublicKey()] = wallet.Secret
+	}
+	if !config.DiffieHellmanExchangeClient(conn, secrets) {
+		return fmt.Errorf("could not exchange keys")
 	}
 	return nil
 }

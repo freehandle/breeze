@@ -2,6 +2,7 @@ package admin
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/crypto/dh"
@@ -25,6 +26,7 @@ func DialAdmin(hostname string, node socket.TokenAddr, credential crypto.Private
 	if err != nil {
 		return nil, err
 	}
+	fmt.Println(data)
 	if len(data) < crypto.TokenSize+1 || data[0] != EphemeralKey {
 		return nil, errors.New("invalid ephemeral key")
 	}
