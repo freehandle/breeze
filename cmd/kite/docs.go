@@ -47,6 +47,7 @@ Will connect to trusted node and ask for the secrets keys the node is expecting
 to receive. The trusted node will only accept the connection if the token 
 associated to the secret key of the vault is configured with admin rights on the 
 trusted node.
+The <node-address> parameter has the DNS:port format
 `
 
 const helpGrant = `usage: safe <path-tovault-file> grant <node-id> <token> [gateway|block] [description]
