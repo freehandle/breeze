@@ -22,6 +22,7 @@ func waitForRemoteKeysSyncWithTempKey(ctx context.Context, tokens []crypto.Token
 		fmt.Printf("Failed to synchronize keys: could not bind to port: %v\n", err)
 		return nil
 	}
+	defer listener.Close()
 	fmt.Printf("Wait for synchronization of %d keys on port %d with ephemeral token %v\n", len(tokens), port, syncToken)
 	withcancel, cancel := context.WithCancel(ctx)
 	go func() {
@@ -44,14 +45,12 @@ func waitForRemoteKeysSyncWithTempKey(ctx context.Context, tokens []crypto.Token
 			cancel()
 			break
 		}
-		fmt.Println("tamu aqui")
 		trusted, err := socket.PromoteConnection(conn, tempKey, firewall)
 		if err != nil {
 			fmt.Printf("admin connection rejected: %v\n", err)
 			continue
 		}
 		keys := DiffieHellmanExchangeServer(trusted, tokens)
-		fmt.Println("received keys", len(keys))
 		if len(keys) > 0 {
 			count := 0
 			for _, key := range keys {
@@ -115,6 +114,7 @@ func DiffieHellmanExchangeServer(conn *socket.SignedConnection, tokens []crypto.
 		}
 	}
 	conn.Send([]byte{0, byte(len(validated))})
+
 	return validated
 }
 

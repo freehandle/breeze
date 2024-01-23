@@ -5,11 +5,21 @@
 all:
 	go mod tidy
 	go build -o ./build/blow ./cmd/blow 
-	go build -o ./build/echo ./cmd/echo
 	go build -o ./build/beat ./cmd/beat
 	go build -o ./build/kite ./cmd/kite
 
 kite:
 	go mod tidy
 	go build -o ./build/kite ./cmd/kite
-	
+
+echo:
+	go mod tidy
+	go build -o ./build/echo ./cmd/echo
+
+blow:
+	go mod tidy
+	go build -o ./build/blow ./cmd/blow 
+
+beat:
+	go mod tidy
+	go build -o ./build/beat ./cmd/beat
