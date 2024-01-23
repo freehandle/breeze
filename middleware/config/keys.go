@@ -37,7 +37,7 @@ func waitForRemoteKeysSyncWithTempKey(ctx context.Context, tokens []crypto.Token
 	}
 	synced := make(map[crypto.Token]crypto.PrivateKey)
 	// accept any connection with any of the demanded tokens
-	firewall := socket.NewValidConnections(tokens, false)
+	firewall := socket.NewValidConnections([]crypto.Token{}, true)
 	for {
 		conn, err := listener.Accept()
 		if err != nil {

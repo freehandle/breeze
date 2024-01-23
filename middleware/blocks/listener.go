@@ -1,23 +1,5 @@
 package blocks
 
-import (
-	"github.com/freehandle/breeze/consensus/swell"
-	"github.com/freehandle/breeze/crypto"
-	"github.com/freehandle/breeze/middleware/blockdb"
-	"github.com/freehandle/breeze/socket"
-)
-
-type ListenerConfig struct {
-	Credentials crypto.PrivateKey
-	DB          blockdb.DBConfig
-	Swell       swell.SwellNetworkConfiguration
-	Port        int
-	Firewall    *socket.AcceptValidConnections
-	Hostname    string
-	Sources     []socket.TokenAddr
-	keepN       int
-}
-
 /*
 type BreezeListenerNode struct {
 	mu              sync.Mutex

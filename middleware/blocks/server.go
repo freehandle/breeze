@@ -6,12 +6,25 @@ import (
 	"log/slog"
 	"sync"
 
+	"github.com/freehandle/breeze/consensus/swell"
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/middleware/admin"
 	"github.com/freehandle/breeze/middleware/blockdb"
 	"github.com/freehandle/breeze/socket"
 	"github.com/freehandle/breeze/util"
 )
+
+type Config struct {
+	Credentials crypto.PrivateKey
+	DB          blockdb.DBConfig
+	Swell       swell.SwellNetworkConfiguration
+	Port        int
+	Firewall    *socket.AcceptValidConnections
+	Hostname    string
+	Sources     []socket.TokenAddr
+	PoolSize    int
+	Protocol    uint32
+}
 
 type Server struct {
 	mu          sync.Mutex
@@ -24,7 +37,7 @@ type Server struct {
 	firewall    *socket.AcceptValidConnections
 }
 
-func NewServer(ctx context.Context, adm *admin.Administration, config ListenerConfig) (*Server, error) {
+func NewServer(ctx context.Context, adm *admin.Administration, config Config) (*Server, error) {
 	if config.Firewall == nil {
 		return nil, fmt.Errorf("firewall config required")
 	}
@@ -43,6 +56,11 @@ func NewServer(ctx context.Context, adm *admin.Administration, config ListenerCo
 	if err != nil {
 		cancel()
 		return nil, err
+	}
+
+	if config.Protocol == 0 {
+		NewBreezeListener(ctx, adm, config)
+
 	}
 
 	go func() {
@@ -109,3 +127,46 @@ func (b *Server) Broadcast(data []byte) {
 		}
 	}()
 }
+
+func BreezeListener(ctx context.Context, config Config) (*swell.StandByNode, error) {
+	if config.Firewall == nil {
+		return nil, fmt.Errorf("firewall config required")
+	}
+	ctx, cancel := context.WithCancel(ctx)
+cfg := swell.ValidatorConfig{
+	Credentials:    config.Credentials,
+	WalletPath:     "",
+	Hostname:       "localhost",
+	TrustedGateway: config.Sources,
+}
+listener := &BreezeListenerNode{
+	Credentials: config.Credentials,
+	recent:      make([]*chain.CommitBlock, 0, config.keepN),
+	firewall:    config.Firewall,
+	keepN:       config.keepN,
+}
+var err error
+listener.db, err = blockdb.NewBlockchainHistory(config.DB)
+if err != nil {
+	cancel()
+	return nil, err
+}
+newConnListener, err := socket.Listen(fmt.Sprintf("%s:%d", config.Hostname, config.Port))
+if err != nil {
+	cancel()
+	return nil, err
+}
+standBy := make(chan *swell.StandByNode)
+connectedToNetwork := false
+for _, source := range config.Sources {
+	err = swell.FullSyncValidatorNode(ctx, cfg, source, standBy)
+	if err == nil {
+		connectedToNetwork = true
+		break
+	}
+}
+if !connectedToNetwork {
+	cancel()
+	return nil, fmt.Errorf("could not connect to network")
+}
+listener.Standby = <-standBy

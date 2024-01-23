@@ -54,8 +54,8 @@ func (cfg EchoConfig) Check() error {
 	return nil
 }
 
-func configToListenerConfig(cfg EchoConfig, pk crypto.PrivateKey) blocks.ListenerConfig {
-	return blocks.ListenerConfig{
+func configToListenerConfig(cfg EchoConfig, pk crypto.PrivateKey) blocks.Config {
+	return blocks.Config{
 		Credentials: pk,
 		DB: blockdb.DBConfig{
 			Path:           cfg.StoragePath,
