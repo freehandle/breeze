@@ -23,7 +23,7 @@ import (
 func RunValidator(c *Window) {
 	epoch := c.Start
 	startEpoch := c.Node.Timer(epoch)
-	slog.Debug("RunValidator: starting new window", "starting at", epoch)
+	slog.Debug("RunValidator: starting new window", "starting at", epoch, "ending at", c.End, "validators", c.Committee.validators)
 	// to receive confirmations from the goroutines responsi
 	c.newBlock = make(chan BlockConsensusConfirmation)
 	//checksumEpoch := (c.Start + c.End) / 2

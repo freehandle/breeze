@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 
+	"github.com/freehandle/breeze/consensus/permission"
+	"github.com/freehandle/breeze/consensus/swell"
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/socket"
 )
@@ -217,4 +220,31 @@ func PeersToTokenAddr(peers []Peer) []socket.TokenAddr {
 		}
 	}
 	return tk
+}
+
+func SwellConfigFromConfig(cfg *NetworkConfig, networkID string) swell.SwellNetworkConfiguration {
+
+	swell := swell.SwellNetworkConfiguration{
+		NetworkHash:      crypto.Hasher([]byte(networkID)),
+		MaxPoolSize:      cfg.Breeze.Swell.CommitteeSize,
+		MaxCommitteeSize: cfg.Breeze.ChecksumCommitteeSize,
+		BlockInterval:    time.Duration(cfg.Breeze.BlockInterval) * time.Millisecond,
+		ChecksumWindow:   cfg.Breeze.ChecksumWindowBlocks,
+	}
+	if poa := cfg.Permission.POA; poa != nil {
+		tokens := make([]crypto.Token, 0)
+		for _, trusted := range poa.TrustedNodes {
+			var token crypto.Token
+			token = crypto.TokenFromString(trusted)
+			if !token.Equal(crypto.ZeroToken) {
+				tokens = append(tokens, token)
+			}
+		}
+		swell.Permission = permission.NewProofOfAuthority(tokens...)
+	} else if pos := cfg.Permission.POS; pos != nil {
+		swell.Permission = &permission.ProofOfStake{MinimumStage: uint64(pos.MinimumStake)}
+	} else {
+		swell.Permission = permission.Permissionless{}
+	}
+	return swell
 }

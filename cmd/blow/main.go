@@ -2,14 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"time"
 
-	"github.com/freehandle/breeze/consensus/permission"
 	"github.com/freehandle/breeze/consensus/relay"
 	"github.com/freehandle/breeze/consensus/swell"
 	"github.com/freehandle/breeze/crypto"
@@ -18,11 +17,10 @@ import (
 	"github.com/freehandle/breeze/socket"
 )
 
-const usage = "usage: blow <path-to-json-config-file> [genesis|sync address token]"
+const usage = "usage: blow <path-to-json-config-file> [genesis|sync address token|check]"
 
 func main() {
 	var err error
-	ctx, cancel := context.WithCancel(context.Background())
 	if len(os.Args) < 3 {
 		fmt.Println(usage)
 		os.Exit(1)
@@ -42,6 +40,12 @@ func main() {
 		cfg.Network.Permission = config.StandardPoSConfig
 	}
 
+	if os.Args[2] == "check" {
+		bytes, _ := json.MarshalIndent(cfg, "", "  ")
+		fmt.Printf("config file:\n %s\n", string(bytes))
+		return
+	}
+
 	log := filepath.Join(cfg.LogPath, fmt.Sprintf("%v.log", cfg.Token[0:16]))
 
 	logFile, err := os.OpenFile(log, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
@@ -54,23 +58,36 @@ func main() {
 	logger := slog.NewTextHandler(logFile, &slog.HandlerOptions{Level: programLevel})
 	slog.SetDefault(slog.New(logger))
 
-	swellConfig := SwellConfigFromConfig(cfg)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	nodeToken := crypto.TokenFromString(cfg.Token)
+	var nodeSecret crypto.PrivateKey
+	if cfg.CredentialsPath != "" {
+		nodeSecret, err = config.ParseCredentials(cfg.CredentialsPath, nodeToken)
+		if err != nil {
+			fmt.Printf("could not retrieve credentials from file: %v\n", err)
+			cancel()
+			os.Exit(1)
+		}
+	} else {
+		secrets := config.WaitForRemoteKeysSync(ctx, []crypto.Token{nodeToken}, "localhost", cfg.AdminPort)
+		if secret, ok := secrets[nodeToken]; !ok {
+			fmt.Println("Key sync failed, exiting")
+			cancel()
+			os.Exit(1)
+		} else {
+			nodeSecret = secret
+		}
+
+	}
+
+	swellConfig := config.SwellConfigFromConfig(cfg.Network, cfg.Genesis.NetworkID)
 	relayConfig := RelayFromConfig(ctx, cfg, crypto.ZeroPrivateKey)
 	relay, err := relay.Run(ctx, relayConfig)
 	if err != nil {
 		cancel()
 		fmt.Printf("could not open relay ports: %v\n", err)
 		os.Exit(1)
-	}
-	nodeToken := crypto.TokenFromString(cfg.Token)
-	secrets := config.WaitForRemoteKeysSync(ctx, []crypto.Token{nodeToken}, "localhost", cfg.AdminPort)
-	var nodeSecret crypto.PrivateKey
-	if secret, ok := secrets[nodeToken]; !ok {
-		fmt.Println("Key sync failed, exiting")
-		cancel()
-		os.Exit(1)
-	} else {
-		nodeSecret = secret
 	}
 
 	adm, err := admin.OpenAdminPort(ctx, "localhost", nodeSecret, cfg.AdminPort, relayConfig.Firewall.AcceptGateway, relayConfig.Firewall.AcceptBlockListener)
@@ -166,33 +183,6 @@ func RelayFromConfig(ctx context.Context, config *NodeConfig, pk crypto.PrivateK
 		BlockListenerPort: config.Relay.Blocks.Port,
 		Firewall:          &firewall,
 	}
-}
-
-func SwellConfigFromConfig(cfg *NodeConfig) swell.SwellNetworkConfiguration {
-
-	swell := swell.SwellNetworkConfiguration{
-		NetworkHash:      crypto.Hasher([]byte(cfg.Genesis.NetworkID)),
-		MaxPoolSize:      cfg.Network.Breeze.Swell.CommitteeSize,
-		MaxCommitteeSize: cfg.Network.Breeze.ChecksumCommitteeSize,
-		BlockInterval:    time.Duration(cfg.Network.Breeze.BlockInterval) * time.Millisecond,
-		ChecksumWindow:   cfg.Network.Breeze.ChecksumWindowBlocks,
-	}
-	if poa := cfg.Network.Permission.POA; poa != nil {
-		tokens := make([]crypto.Token, 0)
-		for _, trusted := range poa.TrustedNodes {
-			var token crypto.Token
-			token = crypto.TokenFromString(trusted)
-			if !token.Equal(crypto.ZeroToken) {
-				tokens = append(tokens, token)
-			}
-		}
-		swell.Permission = permission.NewProofOfAuthority(tokens...)
-	} else if pos := cfg.Network.Permission.POS; pos != nil {
-		swell.Permission = &permission.ProofOfStake{MinimumStage: uint64(pos.MinimumStake)}
-	} else {
-		swell.Permission = permission.Permissionless{}
-	}
-	return swell
 }
 
 func CreateNodeFromGenesis(ctx context.Context, config *NodeConfig, secret crypto.PrivateKey) error {

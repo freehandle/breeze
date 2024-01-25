@@ -10,6 +10,7 @@ import (
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/middleware/admin"
 	"github.com/freehandle/breeze/middleware/blockdb"
+	"github.com/freehandle/breeze/middleware/config"
 	"github.com/freehandle/breeze/socket"
 	"github.com/freehandle/breeze/util"
 )
@@ -22,7 +23,8 @@ type ProtocolRule struct {
 type Config struct {
 	Credentials crypto.PrivateKey
 	DB          blockdb.DBConfig
-	Swell       swell.SwellNetworkConfiguration
+	Breeze      config.NetworkConfig
+	NetworkID   string
 	Port        int
 	Firewall    *socket.AcceptValidConnections
 	Hostname    string
@@ -42,9 +44,11 @@ type Server struct {
 	firewall    *socket.AcceptValidConnections
 }
 
-func NewServer(ctx context.Context, adm *admin.Administration, config Config) (*Server, error) {
+func NewServer(ctx context.Context, adm *admin.Administration, config Config) chan error {
+	finalize := make(chan error, 1)
 	if config.Firewall == nil {
-		return nil, fmt.Errorf("firewall config required")
+		finalize <- fmt.Errorf("firewall config required")
+		return finalize
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	listener := &Server{
@@ -55,38 +59,44 @@ func NewServer(ctx context.Context, adm *admin.Administration, config Config) (*
 	listener.db, err = blockdb.NewBlockchainHistory(config.DB)
 	if err != nil {
 		cancel()
-		return nil, err
+		finalize <- err
+		return finalize
 	}
 	newConnListener, err := socket.Listen(fmt.Sprintf("%s:%d", config.Hostname, config.Port))
 	if err != nil {
 		cancel()
-		return nil, err
+		finalize <- err
+		return finalize
 	}
 
 	if config.Protocol == nil {
 		standByNode, err := BreezeListener(ctx, config)
 		if err != nil {
 			cancel()
-			return nil, err
+			finalize <- err
+			return finalize
 		}
 		listener.provider = BreezeStandardProvider(ctx, standByNode)
 	} else {
 		sources := socket.NewTrustedAgregator(ctx, config.Hostname, config.Credentials, config.PoolSize, config.Sources, nil)
 		if sources == nil {
 			cancel()
-			return nil, fmt.Errorf("failed to connect to sources")
+			finalize <- fmt.Errorf("failed to connect to sources")
+			return finalize
 		}
 		listener.provider = SocialIndexerProvider(ctx, config.Protocol.Code, sources, config.Protocol.IndexFn)
 	}
 	if listener.provider == nil {
 		cancel()
-		return nil, fmt.Errorf("failed to create chain of block providers")
+		finalize <- fmt.Errorf("failed to create chain of block providers")
+		return finalize
 	}
 
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
+				finalize <- ctx.Err()
 				return
 			case instruction := <-adm.Interaction:
 				if instruction.Request[0] == admin.MsgShutdown {
@@ -128,8 +138,7 @@ func NewServer(ctx context.Context, adm *admin.Administration, config Config) (*
 			listener.mu.Unlock()
 		}
 	}()
-
-	return listener, nil
+	return finalize
 }
 
 func (b *Server) Broadcast(data []byte) {

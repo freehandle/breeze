@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/middleware/config"
@@ -15,6 +16,8 @@ import (
 type NodeConfig struct {
 	// Token of the Node... credentials will be provided by diffie-hellman
 	Token string // `json:"token"`
+	// Local Credentials path if availavle
+	CredentialsPath string // `json:"credentialsPath"`
 	// The address of the node (IP or domain name)
 	Address string // `json:"address"`
 	// Port for admin connections
@@ -39,6 +42,16 @@ type NodeConfig struct {
 func (c NodeConfig) Check() error {
 	if token := crypto.TokenFromString(c.Token); token.Equal(crypto.ZeroToken) {
 		return errors.New("invalid token")
+	} else if c.CredentialsPath != "" {
+		if data, err := os.ReadFile(c.CredentialsPath); err != nil {
+			return fmt.Errorf("could not read credentials file: %v", err)
+		} else if pk, err := crypto.ParsePEMPrivateKey(data); err != nil {
+			return fmt.Errorf("could not parse credentials file: %v", err)
+		} else {
+			if !pk.PublicKey().Equal(token) {
+				return fmt.Errorf("credentials file does not match token: %v instead of %v", pk.PublicKey(), token)
+			}
+		}
 	}
 	if _, err := net.LookupCNAME(c.Address); err != nil {
 		return fmt.Errorf("could not resolver noder Address: %v", err)
