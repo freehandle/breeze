@@ -284,7 +284,8 @@ type ShowCommand struct{}
 func (c *ShowCommand) Execute(vault *Kite) error {
 	secret := hex.EncodeToString(vault.vault.SecretKey[:])
 	fmt.Printf("Vault token: %v\nSecret: %v\n", vault.vault.SecretKey.PublicKey(), secret)
-
+	fmt.Printf("Gateway: %v\n", vault.Gateway)
+	fmt.Printf("Listener: %v\n", vault.Listener)
 	return nil
 }
 
@@ -364,7 +365,15 @@ type ConfigCommand struct {
 }
 
 func (c *ConfigCommand) Execute(vault *Kite) error {
-	return nil
+	config := strings.ToLower(c.Variable)
+	if config == "gateway" {
+		vault.DefaultNode(c.NodeID, true)
+		return nil
+	} else if config == "listener" {
+		vault.DefaultNode(c.NodeID, false)
+		return nil
+	}
+	return errors.New("invalid config")
 }
 
 func dialAdmin(safe *Kite, nodeID string) (*admin.AdminClient, error) {

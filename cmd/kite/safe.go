@@ -36,6 +36,7 @@ func ParseDefault(data []byte) (string, byte) {
 	if position != len(data) {
 		return "", 0
 	}
+	fmt.Println(node, scope)
 	return node, scope
 }
 
@@ -243,7 +244,7 @@ func OpenVaultFromPassword(password []byte, fileName string) (*Kite, error) {
 			} else {
 				return nil, errors.New("could not parse wallet key")
 			}
-		} else if entry[1] == DefaultKind {
+		} else if entry[0] == DefaultKind {
 			node, scope := ParseDefault(entry)
 			if node != "" {
 				if scope == 0 {
