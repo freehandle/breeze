@@ -135,12 +135,17 @@ func (safe *Kite) SecureItem(data []byte) error {
 }
 
 func (vault *Kite) GenerateNewKey(id, description string) (crypto.Token, crypto.PrivateKey) {
+	token, newKey := crypto.RandomAsymetricKey()
+	vault.StoreNewKey(newKey, id, description)
+	return token, newKey
+}
+
+func (vault *Kite) StoreNewKey(newKey crypto.PrivateKey, id, description string) {
 	for _, wallet := range vault.WalletKeys {
 		if wallet.ID == id {
 			log.Fatal("Wallet ID already exists")
 		}
 	}
-	token, newKey := crypto.RandomAsymetricKey()
 	key := WalletKey{
 		Secret:      newKey,
 		Description: description,
@@ -148,7 +153,6 @@ func (vault *Kite) GenerateNewKey(id, description string) (crypto.Token, crypto.
 	}
 	vault.SecureItem(key.Serialize())
 	vault.WalletKeys = append(vault.WalletKeys, key)
-	return token, newKey
 }
 
 func (safe *Kite) DefaultNode(id string, gateway bool) {

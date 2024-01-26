@@ -41,6 +41,7 @@ const (
 	removeCmd
 	nodesCmd
 	generateCmd
+	importCmd
 	syncCmd
 	grantCmd
 	revokeCmd
@@ -98,6 +99,8 @@ func parseCommand() byte {
 		return nodesCmd
 	case "generate":
 		return generateCmd
+	case "import":
+		return importCmd
 	case "sync":
 		return syncCmd
 	case "grant":

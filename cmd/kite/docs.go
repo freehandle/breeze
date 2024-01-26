@@ -34,11 +34,17 @@ const helpNodes = `usage: kite <path-tovault-file> nodes
 List all the trusted nodes registered within the vault.
 `
 
-const helpGenerate = `usage: kite <path-tovault-file> generate
+const helpGenerate = `usage: kite <path-tovault-file> generate id description
 
 New generates a random ED25519 cryptographic key-pair and store the private
 key on the secure vault file. The public key is printed to the standard output.
 
+`
+
+const helpImport = `usage: kite <path-to-pem-file> import id description
+
+Import an existing ED25519 private key from a pem file. The public key is 
+printed to the standard output.
 `
 
 const helpSync = `usage: kite <path-tovault-file> sync <node-address> <node-temp-token>

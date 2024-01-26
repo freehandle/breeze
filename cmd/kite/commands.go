@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -45,6 +44,17 @@ func parseCommandArgs(cmd byte, args []string) Command {
 			Id:          args[0],
 			Description: args[1],
 		}
+	case importCmd:
+		if len(args) < 3 {
+			fmt.Println("insufficient arguments")
+			return nil
+		}
+		return &ImportCommand{
+			File:        args[0],
+			Id:          args[1],
+			Description: args[2],
+		}
+
 	case registerCmd:
 		if len(args) < 4 {
 			fmt.Println("insufficient arguments")
@@ -282,10 +292,17 @@ func (s StatusCommand) Execute(safe *Kite) error {
 type ShowCommand struct{}
 
 func (c *ShowCommand) Execute(vault *Kite) error {
-	secret := hex.EncodeToString(vault.vault.SecretKey[:])
-	fmt.Printf("Vault token: %v\nSecret: %v\n", vault.vault.SecretKey.PublicKey(), secret)
+	fmt.Printf("Vault token: %v\n", vault.vault.SecretKey.PublicKey())
 	fmt.Printf("Gateway: %v\n", vault.Gateway)
 	fmt.Printf("Listener: %v\n", vault.Listener)
+	fmt.Printf("\nRegistered Nodes\n====================\n\n")
+	for _, node := range vault.Nodes {
+		fmt.Printf("%s\t%s\t%s\t%s\n", node.ID, node.Host, node.Token, node.Description)
+	}
+	fmt.Printf("\nWallet Keys\n===========\n\n")
+	for _, wallet := range vault.WalletKeys {
+		fmt.Printf("%s\t%s\t%s\n", wallet.ID, wallet.Secret.PublicKey(), wallet.Description)
+	}
 	return nil
 }
 
@@ -400,5 +417,25 @@ type GenerateCommand struct {
 func (c *GenerateCommand) Execute(vault *Kite) error {
 	token, _ := vault.GenerateNewKey(c.Id, c.Description)
 	fmt.Printf("New token: %v\n", token)
+	return nil
+}
+
+type ImportCommand struct {
+	File        string
+	Id          string
+	Description string
+}
+
+func (c *ImportCommand) Execute(vault *Kite) error {
+	data, err := os.ReadFile(c.File)
+	if err != nil {
+		return fmt.Errorf("could not read file: %v", err)
+	}
+	pk, err := crypto.ParsePEMPrivateKey(data)
+	if err != nil {
+		return fmt.Errorf("could not parse key: %v", err)
+	}
+	vault.StoreNewKey(pk, c.Id, c.Description)
+	fmt.Printf("Imported key for token: %v\n", pk.PublicKey())
 	return nil
 }
