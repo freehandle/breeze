@@ -66,9 +66,11 @@ func performClientHandShake(conn net.Conn, prvKey crypto.PrivateKey, remotePub c
 	// receive remote token, signature of provided nonce and a new nonce to sign
 	resp, err := readhs(conn)
 	if err != nil {
+		conn.Close()
 		return nil, err
 	}
 	if len(resp) != crypto.TokenSize+crypto.NonceSize+crypto.SignatureSize {
+		conn.Close()
 		return nil, errCouldNotVerify
 	}
 	// test if t he copy matches with subtle
@@ -77,13 +79,16 @@ func performClientHandShake(conn net.Conn, prvKey crypto.PrivateKey, remotePub c
 	copy(remoteSignature[:], resp[crypto.TokenSize:crypto.TokenSize+crypto.SignatureSize])
 	remoteNonce := resp[crypto.TokenSize+crypto.SignatureSize:]
 	if subtle.ConstantTimeCompare(remoteToken, remotePub[:]) != 1 {
+		conn.Close()
 		return nil, errCouldNotVerify
 	}
 	if !remotePub.Verify(nonce, remoteSignature) {
+		conn.Close()
 		return nil, errCouldNotVerify
 	}
 	signature := prvKey.Sign(remoteNonce)
 	if writehs(conn, signature[:]) != nil {
+		conn.Close()
 		return nil, errCouldNotVerify
 	}
 	return &SignedConnection{

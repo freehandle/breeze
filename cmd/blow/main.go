@@ -82,8 +82,8 @@ func main() {
 	}
 
 	swellConfig := config.SwellConfigFromConfig(cfg.Network, cfg.Genesis.NetworkID)
-	relayConfig := RelayFromConfig(ctx, cfg, crypto.ZeroPrivateKey)
-	relay, err := relay.Run(ctx, relayConfig)
+	relayConfig := RelayFromConfig(ctx, cfg, nodeSecret)
+	relay, err := relay.Run(ctx, &relayConfig)
 	if err != nil {
 		cancel()
 		fmt.Printf("could not open relay ports: %v\n", err)
@@ -176,6 +176,7 @@ func RelayFromConfig(ctx context.Context, config *NodeConfig, pk crypto.PrivateK
 		AcceptGateway:       socket.NewValidConnections(listGateways, config.Relay.Gateway.Firewall.Open),
 		AcceptBlockListener: socket.NewValidConnections(listBlockListeners, config.Relay.Blocks.Firewall.Open),
 	}
+	fmt.Println(listGateways, listBlockListeners)
 
 	return relay.Config{
 		Credentials:       pk,

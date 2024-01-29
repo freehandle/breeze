@@ -95,7 +95,6 @@ func LaunchGateway(ctx context.Context, config Configuration, trusted *socket.Si
 					}
 					close(windowReady)
 					gateway.ready = true
-					fmt.Println("Gateway: ready")
 				case <-gateway.sync.Timer.C:
 					gateway.NextBlock()
 				case conn := <-gateway.feedPool.Activate:

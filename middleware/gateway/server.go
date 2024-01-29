@@ -42,13 +42,13 @@ func RetrieveTopology(config Configuration) (*messages.NetworkTopology, *socket.
 		addr := fmt.Sprintf("%s:%d", candidate.Addr, config.BlockRelayPort)
 		provider, err := socket.Dial(config.Hostname, addr, config.Credentials, candidate.Token)
 		if err == nil {
-			fmt.Println("sent")
 			provider.Send([]byte{messages.MsgNetworkTopologyReq})
 			msg, err := provider.Read()
 			if err != nil {
 				continue
 			}
 			topology := messages.ParseNetworkTopologyMessage(msg)
+			fmt.Printf("%+v\n", topology)
 			if topology != nil {
 				return topology, provider
 			}
@@ -64,13 +64,16 @@ func NewServer(ctx context.Context, config Configuration, administration *admin.
 		terminate <- err
 		return terminate
 	}
+	fmt.Println("retrieving topology")
 	topology, conn := RetrieveTopology(config)
 	if topology == nil {
+		fmt.Println("deu ruim")
 		terminate <- fmt.Errorf("could not retrieve network topology")
 		return terminate
 	}
 
 	proposal := make(chan *Propose)
+	fmt.Println("launching gateway")
 	LaunchGateway(ctx, config, conn, topology, proposal)
 
 	server := Server{

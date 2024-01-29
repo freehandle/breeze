@@ -102,14 +102,14 @@ type SyncRequest struct {
 
 // Run starts a relay network. It returns a Node and an error. On cancelation
 // of the context, the entire relay network is graciously shutdown.
-func Run(ctx context.Context, cfg Config) (*Node, error) {
+func Run(ctx context.Context, cfg *Config) (*Node, error) {
 	n := &Node{
 		ActionGateway:   make(chan []byte),
 		Statement:       make(chan []byte),
 		BlockEvents:     make(chan []byte),
 		SyncRequest:     make(chan SyncRequest),
 		TopologyRequest: make(chan *socket.SignedConnection),
-		config:          &cfg,
+		config:          cfg,
 	}
 
 	var listenAdminPort net.Listener
@@ -214,9 +214,11 @@ func Run(ctx context.Context, cfg Config) (*Node, error) {
 				} else {
 					accept = socket.AcceptAllConnections
 				}
+				fmt.Println(n.config.Credentials, n.config.Credentials.PublicKey())
 				trustedConn, err := socket.PromoteConnection(conn, n.config.Credentials, accept)
 				if err != nil {
 					conn.Close()
+					continue
 				}
 				go WaitForOutgoingSyncRequest(trustedConn, newBlockListener, dropConnection, action, n.TopologyRequest)
 			} else {
@@ -256,6 +258,10 @@ func WaitForProtocolActions(conn *socket.SignedConnection, terminate chan crypto
 // it to the sync request channel. If it is not a valid request, if closes the
 // conection and returns without sending anything to outgoing channel.
 func WaitForOutgoingSyncRequest(conn *socket.SignedConnection, outgoing chan SyncRequest, drop chan crypto.Token, action chan []byte, topology chan *socket.SignedConnection) {
+	if conn == nil {
+		slog.Error("relay node synchronization: nil connection")
+		return
+	}
 	lastSync := time.Now().Add(-time.Hour)
 	for {
 		data, err := conn.Read()
@@ -279,6 +285,7 @@ func WaitForOutgoingSyncRequest(conn *socket.SignedConnection, outgoing chan Syn
 		} else if data[0] == messages.MsgChecksumStatement {
 			action <- data
 		} else if data[0] == messages.MsgNetworkTopologyReq {
+			fmt.Println("topoloty requyest")
 			topology <- conn
 		} else if data[0] == messages.MsgSubscribeBlockEvents {
 			cached := socket.NewCachedConnection(conn)

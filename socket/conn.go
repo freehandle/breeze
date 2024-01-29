@@ -173,6 +173,9 @@ func (s *SignedConnection) readWithoutCheck() ([]byte, error) {
 // It returns an ErrInvalidSignature error if it could read but signature does
 // not match.
 func (s *SignedConnection) Read() ([]byte, error) {
+	if s == nil || s.conn == nil {
+		return nil, errors.New("connection closed")
+	}
 	bytes, err := s.readWithoutCheck()
 	if err != nil {
 		return nil, err
