@@ -16,8 +16,12 @@ type WindowValidators struct {
 
 func (v *WindowValidators) GetPool(epoch uint64) []*socket.SignedConnection {
 	leader := epoch % uint64(len(v.order))
-	if v.End-epoch > SendNextNValidators {
-		return v.order[leader : leader+SendNextNValidators]
+	NValidators := SendNextNValidators
+	if NValidators > len(v.order) {
+		NValidators = len(v.order)
+	}
+	if v.End-epoch > uint64(NValidators) {
+		return v.order[leader : leader+uint64(NValidators)]
 	} else {
 		return v.order[leader:]
 	}

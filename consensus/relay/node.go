@@ -265,7 +265,8 @@ func WaitForOutgoingSyncRequest(conn *socket.SignedConnection, outgoing chan Syn
 	lastSync := time.Now().Add(-time.Hour)
 	for {
 		data, err := conn.Read()
-		if err != nil || len(data) < 10 || (data[0] != messages.MsgSyncRequest && data[0] != messages.MsgChecksumStatement) {
+		fmt.Println(data)
+		if err != nil || len(data) < 1 {
 			if err != nil {
 				slog.Info("relay node synchronization connection terminated", "node", conn.Token)
 			} else {
