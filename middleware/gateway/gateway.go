@@ -150,13 +150,12 @@ func (g *Gateway) NextBlock() {
 		copy(g.activeFwdPool, g.currentWindow.GetPool(g.sync.Epoch))
 	} else {
 		pool := g.currentWindow.GetPool(g.sync.Epoch)
-		if len(pool) < SendNextNValidators {
-			for n, conn := range pool {
-				g.activeFwdPool[n] = conn
-			}
+		if g.currentWindow.End-g.sync.SyncEpoch < SendNextNValidators {
+			// need to send actions to next windo validators
+			g.activeFwdPool = pool
 			if g.nextWindow != nil {
 				for n := 0; n < SendNextNValidators-len(pool); n++ {
-					g.activeFwdPool[n+len(pool)] = g.nextWindow.order[n]
+					g.activeFwdPool[n+len(pool)] = g.nextWindow.order[n%len(g.nextWindow.order)]
 				}
 			} else {
 				slog.Info("Gateway: incomplete forward: MoveNext close to next windows called with no next window")
