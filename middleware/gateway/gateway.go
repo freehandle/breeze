@@ -24,6 +24,11 @@ type ClockSync struct {
 	Timer         *time.Timer
 }
 
+func (c *ClockSync) CurrentEpoch() uint64 {
+	blocks := uint64(time.Since(c.SyncEpochTime) / c.BlockInterval)
+	return c.SyncEpoch + blocks
+}
+
 func (c *ClockSync) reset() {
 	c.Epoch += 1
 	count := c.Epoch - c.SyncEpoch

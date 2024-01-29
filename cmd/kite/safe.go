@@ -107,6 +107,7 @@ type Kite struct {
 func (s *Kite) findNode(id string) RegisteredNode {
 	var found RegisteredNode
 	for _, node := range s.Nodes {
+		fmt.Println(node.ID, id)
 		if node.ID == id {
 			found = node
 		}
@@ -276,10 +277,12 @@ func (safe *Kite) dialGateway() (*socket.SignedConnection, uint64, error) {
 	if err != nil {
 		return nil, 0, err
 	}
+	fmt.Println("retrieving epoch")
 	epochData, err := conn.Read()
 	if err != nil {
 		return nil, 0, fmt.Errorf("could not read from gateway: %s", err)
 	}
 	epoch, _ := util.ParseUint64(epochData, 0)
+	fmt.Println(epoch)
 	return conn, epoch, nil
 }

@@ -39,7 +39,7 @@ func TestSwell() {
 		Credentials:       mainserver,
 		Hostname:          "mainserver",
 	}
-	relayNode, err := relay.Run(ctx, relayConfig)
+	relayNode, err := relay.Run(ctx, &relayConfig)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestSwell() {
 			Credentials:       candidate,
 			Hostname:          "candidate",
 		}
-		relayNode, err := relay.Run(ctx, relayConfig)
+		relayNode, err := relay.Run(ctx, &relayConfig)
 		if err != nil {
 			log.Fatal(err)
 		}

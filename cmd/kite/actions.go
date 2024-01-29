@@ -38,10 +38,13 @@ func (t *TransferCommand) Execute(safe *Kite) error {
 	if err != nil || fee < 0 {
 		return errors.New("invalid fee amount")
 	}
+	fmt.Println("dialing")
 	conn, epoch, err := safe.dialGateway()
 	if err != nil {
+		fmt.Print(err)
 		return err
 	}
+	fmt.Println("dialing ok")
 
 	transfer := actions.Transfer{
 		TimeStamp: epoch, // TODO
@@ -53,7 +56,9 @@ func (t *TransferCommand) Execute(safe *Kite) error {
 		Fee:    uint64(fee),
 	}
 	transfer.Sign(secret)
+	fmt.Println(transfer)
 	err = conn.Send(transfer.Serialize())
+	fmt.Println("ent")
 	if err != nil {
 		return fmt.Errorf("error sending transfer to gateway: %s", err)
 	}

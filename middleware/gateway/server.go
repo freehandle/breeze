@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"time"
 
 	"fmt"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/freehandle/breeze/middleware/admin"
 	"github.com/freehandle/breeze/middleware/config"
 	"github.com/freehandle/breeze/socket"
+	"github.com/freehandle/breeze/util"
 )
 
 const (
@@ -35,6 +37,7 @@ type Configuration struct {
 type Server struct {
 	mu      sync.Mutex
 	serving []*socket.SignedConnection
+	clock   *ClockSync
 }
 
 func RetrieveTopology(config Configuration) (*messages.NetworkTopology, *socket.SignedConnection) {
@@ -78,6 +81,12 @@ func NewServer(ctx context.Context, config Configuration, administration *admin.
 
 	server := Server{
 		serving: make([]*socket.SignedConnection, 0),
+	}
+
+	server.clock = &ClockSync{
+		SyncEpoch:     topology.Start,
+		SyncEpochTime: topology.StartAt,
+		BlockInterval: time.Millisecond * time.Duration(config.Breeze.BlockInterval),
 	}
 
 	liveClients := &sync.WaitGroup{}
@@ -130,8 +139,14 @@ func NewServer(ctx context.Context, config Configuration, administration *admin.
 }
 
 func (s *Server) WaitForActions(conn *socket.SignedConnection, proposal chan *Propose, terminated *sync.WaitGroup) {
+	if conn == nil {
+		return
+	}
+	bytes := util.Uint64ToBytes(s.clock.CurrentEpoch())
+	conn.Send(bytes)
 	for {
 		data, err := conn.Read()
+		fmt.Println(data)
 		if err != nil {
 			break
 		}
@@ -151,7 +166,7 @@ func (s *Server) WaitForActions(conn *socket.SignedConnection, proposal chan *Pr
 	}
 	s.mu.Lock()
 	for n, open := range s.serving {
-		if open.Is(conn.Token) {
+		if open != nil && open.Is(conn.Token) {
 			s.serving = append(s.serving[:n], s.serving[n+1:]...)
 		}
 	}
