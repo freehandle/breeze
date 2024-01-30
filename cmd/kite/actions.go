@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/freehandle/breeze/consensus/messages"
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/protocol/actions"
 )
@@ -57,7 +58,7 @@ func (t *TransferCommand) Execute(safe *Kite) error {
 	}
 	transfer.Sign(secret)
 	fmt.Println(transfer)
-	err = conn.Send(transfer.Serialize())
+	err = conn.Send(append([]byte{messages.MsgAction}, transfer.Serialize()...))
 	fmt.Println("ent")
 	if err != nil {
 		return fmt.Errorf("error sending transfer to gateway: %s", err)
@@ -113,7 +114,7 @@ func (s *StakeCommand) Execute(safe *Kite) error {
 		withdraw.Sign(secret)
 		msg = withdraw.Serialize()
 	}
-	err = conn.Send(msg)
+	err = conn.Send(append([]byte{messages.MsgAction}, msg...))
 	if err != nil {
 		return fmt.Errorf("error sending transfer to gateway: %s", err)
 	}

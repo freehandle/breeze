@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/freehandle/breeze/consensus/messages"
@@ -112,7 +113,9 @@ func NewActionVault(ctx context.Context, epoch uint64, actions chan *Propose) *A
 					if !ok {
 						return
 					}
+					fmt.Println("new action", data)
 					if !vault.push(data) {
+						fmt.Println("new action deu ruim", data)
 						data.conn.Send([]byte{messages.MsgError})
 					}
 				case sealed := <-vault.seal:
@@ -132,7 +135,9 @@ func NewActionVault(ctx context.Context, epoch uint64, actions chan *Propose) *A
 					if !ok {
 						return
 					}
+					fmt.Println("new action ... ", data)
 					if !vault.push(data) {
+						fmt.Println("new action ... du ruim", data)
 						data.conn.Send([]byte{messages.MsgError})
 					}
 				case sealed := <-vault.seal:
