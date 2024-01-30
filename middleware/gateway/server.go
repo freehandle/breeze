@@ -157,7 +157,7 @@ func (s *Server) WaitForActions(conn *socket.SignedConnection, proposal chan *Pr
 			slog.Info("connection terminated by client", "token", conn.Token)
 			break
 		}
-		if data[0] == ActionMsg && len(data) > 1 {
+		if data[0] == messages.MsgAction && len(data) > 1 {
 			proposal <- &Propose{
 				data: data[1:],
 				conn: conn,
