@@ -287,7 +287,7 @@ func WaitForOutgoingSyncRequest(conn *socket.SignedConnection, outgoing chan Syn
 		} else if data[0] == messages.MsgChecksumStatement {
 			action <- data
 		} else if data[0] == messages.MsgNetworkTopologyReq {
-			fmt.Println("topoloty requyest")
+			fmt.Println("topology request")
 			topology <- conn
 		} else if data[0] == messages.MsgSubscribeBlockEvents {
 			cached := socket.NewCachedConnection(conn)

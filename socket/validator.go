@@ -151,7 +151,7 @@ func (a *AcceptValidConnections) ValidateConnection(token crypto.Token) chan boo
 	} else {
 		for _, white := range a.list {
 			if white.Equal(token) {
-				fmt.Println("acceptinmg whitelisted connection", token)
+				fmt.Println("accepting whitelisted connection", token)
 				response <- true
 				return response
 			}

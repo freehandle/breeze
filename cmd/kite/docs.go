@@ -102,12 +102,12 @@ Will instruct node to withdraw token-amount of funds from given account.
 
 const helpBalance = `usage: kite <path-tovault-file> balance <account>
 
-Will instruct node to 
+Will instruct node to provide balance information of appointed account 
 `
 
 const helpConfig = `usage: kite <path-tovault-file> config <variable> <node-id>
 
-Will instruct .
+Will instruct node to config a given variable to appointed node identified by the ID
 `
 
 func help(cmd string) {
