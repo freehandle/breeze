@@ -39,15 +39,21 @@ const (
 // actions.
 // Users should use Epoch channel to update the store epoch.
 type ActionStore struct {
-	currentEpoch uint64
-	Live         bool
-	epoch        [][]crypto.Hash
-	data         map[crypto.Hash][]byte
-	reserved     map[crypto.Hash]struct{}
-	Pop          chan []byte
-	Push         chan []byte
-	Epoch        chan uint64
-	hashes       chan hashaction
+	clock    uint64
+	Live     bool
+	epoch    [][]crypto.Hash
+	data     map[crypto.Hash]*StoredAction
+	reserved map[crypto.Hash]*StoredAction
+	Pop      chan *StoredAction
+	Push     chan []byte
+	evolve   chan struct{}
+	updates  chan hashaction
+}
+
+type StoredAction struct {
+	Epoch  uint64
+	Action actions.Action
+	Data   []byte
 }
 
 // hashaction is used to mark, unmark or exclude an action from the store
@@ -63,16 +69,16 @@ type hashaction struct {
 // Users should use Mark, Unmark and Exclude methods  to mark, unmark and exclude
 // actions.
 // Users should use Epoch channel to update the store epoch.
-func NewActionStore(ctx context.Context, epoch uint64) *ActionStore {
+func NewActionStore(ctx context.Context, epoch uint64, actions chan []byte) *ActionStore {
 	store := &ActionStore{
 		Live:     true,
-		data:     make(map[crypto.Hash][]byte),
-		reserved: make(map[crypto.Hash]struct{}),
+		data:     make(map[crypto.Hash]*StoredAction),
+		reserved: make(map[crypto.Hash]*StoredAction),
 		epoch:    make([][]crypto.Hash, 2*MaxActionDelay+1),
-		Pop:      make(chan []byte),
-		Push:     make(chan []byte),
-		Epoch:    make(chan uint64),
-		hashes:   make(chan hashaction),
+		Pop:      make(chan *StoredAction),
+		Push:     actions,
+		evolve:   make(chan struct{}),
+		updates:  make(chan hashaction),
 	}
 	for n := 0; n < len(store.epoch); n++ {
 		store.epoch[n] = make([]crypto.Hash, 0)
@@ -82,7 +88,7 @@ func NewActionStore(ctx context.Context, epoch uint64) *ActionStore {
 			store.Live = false
 			close(store.Pop)
 			close(store.Push)
-			close(store.Epoch)
+			close(store.evolve)
 		}()
 		done := ctx.Done()
 		for {
@@ -91,76 +97,28 @@ func NewActionStore(ctx context.Context, epoch uint64) *ActionStore {
 				select {
 				case <-done:
 					return
-				case epoch, ok := <-store.Epoch:
-					if !ok {
-						return
-					}
-					store.moveNext(epoch)
-				case data, ok := <-store.Push:
-					if !ok {
-						return
-					}
+				case <-store.evolve:
+					store.moveNext()
+				case data := <-store.Push:
 					if len(data) > 0 {
 						store.push(data)
 					}
-				}
-
-			} else if len(store.data) == len(store.reserved) {
-				select {
-				case <-done:
-					return
-				case epoch, ok := <-store.Epoch:
-					if !ok {
-						return
-					}
-					store.moveNext(epoch)
-				case data, ok := <-store.Push:
-					if !ok {
-						return
-					}
-					if len(data) > 0 {
-						store.push(data)
-					}
-				case hash := <-store.hashes:
-					if hash.action == mark {
-						if _, ok := store.data[hash.hash]; ok {
-							store.reserved[hash.hash] = struct{}{}
-						}
-					} else if hash.action == unmark {
-						delete(store.reserved, hash.hash)
-					} else if hash.action == exclude {
-						delete(store.reserved, hash.hash)
-						delete(store.data, hash.hash)
-					}
+				case update := <-store.updates:
+					store.update(update)
 				}
 			} else {
 				select {
 				case <-done:
 					return
-				case epoch, ok := <-store.Epoch:
-					if !ok {
-						return
-					}
-					store.moveNext(epoch)
+				case <-store.evolve:
+					store.moveNext()
 				case store.Pop <- store.pop():
-				case data, ok := <-store.Push:
-					if !ok {
-						return
-					}
+				case data := <-store.Push:
 					if len(data) > 0 {
 						store.push(data)
 					}
-				case hash := <-store.hashes:
-					if hash.action == mark {
-						if _, ok := store.data[hash.hash]; ok {
-							store.reserved[hash.hash] = struct{}{}
-						}
-					} else if hash.action == unmark {
-						delete(store.reserved, hash.hash)
-					} else if hash.action == exclude {
-						delete(store.reserved, hash.hash)
-						delete(store.data, hash.hash)
-					}
+				case update := <-store.updates:
+					store.update(update)
 				}
 			}
 		}
@@ -168,42 +126,60 @@ func NewActionStore(ctx context.Context, epoch uint64) *ActionStore {
 	return store
 }
 
+func (a *ActionStore) update(update hashaction) {
+	if update.action == mark {
+		if stored, ok := a.data[update.hash]; ok {
+			a.reserved[update.hash] = stored
+			delete(a.data, update.hash)
+		}
+	} else if update.action == unmark {
+		if reserved, ok := a.reserved[update.hash]; ok {
+			a.data[update.hash] = reserved
+			delete(a.reserved, update.hash)
+		}
+	} else if update.action == exclude {
+		delete(a.reserved, update.hash)
+		delete(a.data, update.hash)
+	}
+}
+
 // Mark marks an action as reserved. Marks temporarily exclude the action with
 // associated hash from the pool of available actions.
 func (a *ActionStore) Mark(hash crypto.Hash) {
-	a.hashes <- hashaction{hash, mark}
+	a.updates <- hashaction{hash, mark}
 }
 
 // Unmark unmarks an action as reserved.
 func (a *ActionStore) Unmark(hash crypto.Hash) {
-	a.hashes <- hashaction{hash, unmark}
+	a.updates <- hashaction{hash, unmark}
 }
 
 // Exclude permanently deletes an action from the store.
 func (a *ActionStore) Exlude(hash crypto.Hash) {
-	a.hashes <- hashaction{hash, exclude}
+	a.updates <- hashaction{hash, exclude}
 }
 
 // pop implements the pop operation of the store. The Pop request is sent
 // to the Pop channel. pop returns nil if the store is empty. otherwise it
 // returns the oldest action in the store (ordered by epoch and order of arrival).
-func (a *ActionStore) pop() []byte {
+func (a *ActionStore) pop() *StoredAction {
 	if len(a.data) == 0 {
+		slog.Error("ActionStore: pop from empty store")
 		return nil
 	}
 	for n, hashes := range a.epoch {
 		if len(hashes) > 0 {
+			// will purge epoch[n] of excluded actions until it finds an available
+			// non reserved action for the epoch
 			cleaned := make([]crypto.Hash, 0, len(hashes))
 			for m, hash := range hashes {
 				if action, ok := a.data[hash]; ok {
-					if _, ok := a.reserved[hash]; !ok {
-						a.epoch[n] = append(cleaned, hashes[m:]...)
-						delete(a.data, hash)
-						return action
-					} else {
-						// keep reserved but not deleted actions
-						cleaned = append(cleaned, hash)
-					}
+					delete(a.data, hash)
+					a.reserved[hash] = action
+					a.epoch[n] = append(cleaned, hashes[m:]...)
+					return action
+				} else if _, ok := a.reserved[hash]; ok {
+					cleaned = append(cleaned, hash)
 				}
 			}
 		}
@@ -215,37 +191,50 @@ func (a *ActionStore) pop() []byte {
 // to the Push channel. push adds the action to the store if the action epoch
 // is within the MaxActionDelay range of the current epoch.
 func (a *ActionStore) push(data []byte) {
+	hash := crypto.Hasher(data)
+	if _, ok := a.data[hash]; ok {
+		return
+	}
+	if _, ok := a.reserved[hash]; ok {
+		return
+	}
 	epoch := actions.GetEpochFromByteArray(data)
-	if epoch == 0 || epoch+MaxActionDelay < a.currentEpoch || epoch > a.currentEpoch+MaxActionDelay {
+	if epoch == 0 || epoch+MaxActionDelay < a.clock || epoch > a.clock+MaxActionDelay {
+		return
+	}
+	action := actions.ParseAction(data)
+	if action == nil {
 		return
 	}
 	firstBucketEpoch := 0
-	if a.currentEpoch > MaxActionDelay {
-		firstBucketEpoch = int(a.currentEpoch) - MaxActionDelay
+	if a.clock > MaxActionDelay {
+		firstBucketEpoch = int(a.clock) - MaxActionDelay
 	}
 	bucket := int(epoch) - firstBucketEpoch
-	hash := crypto.Hasher(data)
 	if bucket < 0 || bucket > 2*MaxActionDelay {
-		slog.Error("ActionStore: bucket out of range", "bucket", bucket, "epoch", epoch, "current", a.currentEpoch)
+		slog.Error("ActionStore: bucket out of range", "bucket", bucket, "epoch", epoch, "current", a.clock)
 		return
 	}
 	a.epoch[bucket] = append(a.epoch[bucket], hash)
-	a.data[hash] = data
+	a.data[hash] = &StoredAction{
+		Epoch:  epoch,
+		Action: action,
+		Data:   data,
+	}
 }
 
 // moveNext moves the store to the next epoch. It deletes all actions from
 // epochs older than MaxActionDelay.
-func (a *ActionStore) moveNext(epoch uint64) {
-	if epoch != a.currentEpoch+1 {
-		slog.Warn("ActionStore: non sequential epoch update", "proposed", epoch, "current", a.currentEpoch)
-	}
-	a.currentEpoch = epoch
-	if epoch > MaxActionDelay {
+func (a *ActionStore) moveNext() {
+	a.clock += 1
+	if a.clock > MaxActionDelay {
 		for _, hash := range a.epoch[0] {
 			delete(a.data, hash)
 		}
 		a.epoch = append(a.epoch[1:], make([]crypto.Hash, 0))
-	} else {
-		a.epoch = append(a.epoch, make([]crypto.Hash, 0))
 	}
+}
+
+func (a *ActionStore) NextEpoch() {
+	a.evolve <- struct{}{}
 }

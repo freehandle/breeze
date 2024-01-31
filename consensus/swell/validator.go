@@ -1,6 +1,7 @@
 package swell
 
 import (
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -46,7 +47,8 @@ func RunValidator(c *Window) {
 					c.newBlock <- BlockConsensusConfirmation{Epoch: epoch, Status: true}
 
 				} else {
-					c.Node.actions.Epoch <- epoch
+					//<-epoch
+					c.Node.actions.NextEpoch()
 					if c.IsPoolMember(epoch) {
 						if len(c.Committee.weights) == 1 {
 							c.BuildSoloBLock(epoch)
@@ -222,7 +224,7 @@ func (w *Window) BuildSoloBLock(epoch uint64) bool {
 	for {
 		select {
 		case action := <-w.Node.actions.Pop:
-			if len(action) > 0 && block.Validate(action) {
+			if len(action.Data) > 0 && block.Validate(action.Data) {
 				// clear actionarray
 			}
 		case <-timeout.C:
@@ -256,8 +258,9 @@ func (w *Window) BuildBlock(epoch uint64, pool *bft.Pooling) bool {
 		for {
 			select {
 			case action := <-w.Node.actions.Pop:
-				if len(action) > 0 && block.Validate(action) {
-					msg := messages.ActionMessage(action)
+				fmt.Println("****", action)
+				if len(action.Data) > 0 && block.Validate(action.Data) {
+					msg := messages.ActionMessage(action.Data)
 					w.Committee.blocks.Send(epoch, msg)
 				}
 			case <-timeout.C:

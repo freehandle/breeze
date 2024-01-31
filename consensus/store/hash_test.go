@@ -1,4 +1,4 @@
-package gateway
+package store
 
 import (
 	"context"
@@ -33,8 +33,8 @@ func TestActionVault(t *testing.T) {
 		t.Fatal("NewActionVault returned nil")
 	}
 	proposal := &Propose{
-		data: testAction(),
-		conn: conn1,
+		Data: testAction(),
+		Conn: conn1,
 	}
 	propose <- proposal
 	v.NextEpoch()
@@ -46,8 +46,8 @@ func TestActionVault(t *testing.T) {
 		t.Fatal("did not incorporate propose")
 	}
 	data := <-v.Pop
-	if len(data) != len(proposal.data) {
-		t.Fatal("did not pop propose", data, proposal.data)
+	if len(data) != len(proposal.Data) {
+		t.Fatal("did not pop propose", data, proposal.Data)
 	}
 	resp, _ := conn2.Read()
 	if len(resp) != 33 || resp[0] != messages.MsgActionForward {

@@ -140,23 +140,19 @@ func (a *AcceptValidConnections) ValidateConnection(token crypto.Token) chan boo
 	if a.open {
 		for _, black := range a.list {
 			if black.Equal(token) {
-				fmt.Println("rejecting blacklisted connection", token)
 				response <- false
 				return response
 			}
 		}
-		fmt.Println("accepting nonblacklisted connection", token)
 		response <- true
 		return response
 	} else {
 		for _, white := range a.list {
 			if white.Equal(token) {
-				fmt.Println("accepting whitelisted connection", token)
 				response <- true
 				return response
 			}
 		}
-		fmt.Println("rejecting nonwhitelisted connection", token)
 		response <- false
 		return response
 	}

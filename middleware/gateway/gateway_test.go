@@ -11,6 +11,7 @@ import (
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/middleware/admin"
 	"github.com/freehandle/breeze/middleware/config"
+	"github.com/freehandle/breeze/protocol/actions"
 	"github.com/freehandle/breeze/socket"
 )
 
@@ -45,6 +46,18 @@ func createFakeRelayNetwork(count int) *fakeRelayNetwork {
 		}(blockListener, fake.pks[n], n)
 	}
 	return fake
+}
+
+func testAction() []byte {
+	tk, pk := crypto.RandomAsymetricKey()
+	deposit := actions.Deposit{
+		TimeStamp: 1,
+		Token:     tk,
+		Value:     10,
+		Fee:       1,
+	}
+	deposit.Sign(pk)
+	return deposit.Serialize()
 }
 
 func TestGateway(t *testing.T) {

@@ -58,8 +58,9 @@ const BlockInterval = time.Second
 func NewGenesisNode(ctx context.Context, wallet crypto.PrivateKey, config ValidatorConfig) {
 	token := config.Credentials.PublicKey()
 	node := &SwellNode{
-		blockchain:  chain.BlockchainFromGenesisState(wallet, config.WalletPath, config.SwellConfig.NetworkHash, config.SwellConfig.BlockInterval, config.SwellConfig.ChecksumWindow),
-		actions:     store.NewActionStore(ctx, 1),
+		blockchain: chain.BlockchainFromGenesisState(wallet, config.WalletPath, config.SwellConfig.NetworkHash, config.SwellConfig.BlockInterval, config.SwellConfig.ChecksumWindow),
+		actions:    store.NewActionStore(ctx, 1, config.Relay.ActionGateway),
+		//actions:     store.NewActionVaultNoReply(ctx, 1, config.Relay.ActionGateway),
 		credentials: config.Credentials,
 		validators: &ChecksumWindowValidators{
 			order:   []crypto.Token{token},
@@ -70,7 +71,7 @@ func NewGenesisNode(ctx context.Context, wallet crypto.PrivateKey, config Valida
 		admin:    config.Admin,
 		hostname: config.Hostname,
 	}
-	RunActionsGateway(ctx, config.Relay.ActionGateway, node.actions)
+	//RunActionsGateway(ctx, config.Relay.ActionGateway, node.actions)
 	go node.ServeAdmin(ctx)
 	window := Window{
 		ctx:       ctx,
@@ -86,7 +87,7 @@ func NewGenesisNode(ctx context.Context, wallet crypto.PrivateKey, config Valida
 
 // RunActionsGateway keep track of the actions gateway channel and populates the
 // node action store with information gathered from there.
-func RunActionsGateway(ctx context.Context, gateway chan []byte, store *store.ActionStore) {
+/*func RunActionsGateway(ctx context.Context, gateway chan []byte, store *store.ActionVault) {
 	done := ctx.Done()
 	go func() {
 		for {
@@ -103,6 +104,7 @@ func RunActionsGateway(ctx context.Context, gateway chan []byte, store *store.Ac
 		}
 	}()
 }
+*/
 
 func ConnectToTrustedGateway(ctx context.Context, config ValidatorConfig) error {
 	for _, gateway := range config.TrustedGateway {
@@ -145,11 +147,12 @@ type SwellNode struct {
 	credentials crypto.PrivateKey         // credentials for the node
 	blockchain  *chain.Blockchain         // node's version of breeze blockchain
 	actions     *store.ActionStore        // actions received through the actions gateway
-	admin       *admin.Administration     // administration interface
-	config      SwellNetworkConfiguration // parameters of the underlying network
-	active      chan chan error
-	relay       *relay.Node // (optional) relay network
-	hostname    string      // "localhost" or empty for internet, anything else for testing
+	//actions  *store.ActionVault
+	admin    *admin.Administration     // administration interface
+	config   SwellNetworkConfiguration // parameters of the underlying network
+	active   chan chan error
+	relay    *relay.Node // (optional) relay network
+	hostname string      // "localhost" or empty for internet, anything else for testing
 }
 
 func (s *SwellNode) AdminReport() string {

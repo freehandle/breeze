@@ -1,6 +1,8 @@
 package actions
 
 import (
+	"fmt"
+
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/util"
 )
@@ -106,6 +108,7 @@ func (t *Transfer) JSON() string {
 
 func ParseTransfer(data []byte) *Transfer {
 	if len(data) < 2 || data[1] != ITransfer {
+		fmt.Println("invalid transfer", data)
 		return nil
 	}
 	p := Transfer{}
@@ -124,6 +127,7 @@ func ParseTransfer(data []byte) *Transfer {
 	msg := data[0:position]
 	p.Signature, _ = util.ParseSignature(data, position)
 	if !p.From.Verify(msg, p.Signature) {
+		fmt.Printf("%+v\n\n", p)
 		return nil
 	}
 	return &p

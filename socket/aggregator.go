@@ -36,6 +36,12 @@ type TrustedAggregator struct {
 	Activate   chan *SignedConnection
 }
 
+func (t *TrustedAggregator) SendAll(msg []byte) {
+	for _, conn := range t.aggregator.providers {
+		conn.Send(msg)
+	}
+}
+
 func (t *TrustedAggregator) Read() ([]byte, error) {
 	return t.aggregator.Read()
 }
@@ -51,7 +57,7 @@ func NewTrustedAgregator(ctx context.Context, hostname string, credentials crypt
 		closed:     make([]TokenAddr, 0),
 		sample:     size,
 		aggregator: NewAgregator(ctx, hostname, credentials, connections...),
-		Activate:   make(chan *SignedConnection),
+		Activate:   make(chan *SignedConnection, size),
 	}
 	closed := make(chan *SignedConnection)
 	trst.aggregator.closed = closed
@@ -118,6 +124,9 @@ func NewAgregator(ctx context.Context, hostname string, credentials crypto.Priva
 		aggregator.providers = make([]*SignedConnection, 0)
 	} else {
 		aggregator.providers = connections
+		for _, conn := range connections {
+			aggregator.addConnection(conn)
+		}
 	}
 	go func() {
 		for {
@@ -246,17 +255,21 @@ func (b *Aggregator) AddProvider(provider TokenAddr) (*SignedConnection, error) 
 	} else {
 		b.add <- conn
 	}
+	b.addConnection(conn)
+	return conn, nil
+}
+
+func (b *Aggregator) addConnection(conn *SignedConnection) {
 	go func() {
 		for {
 			data, err := conn.Read()
 			if err != nil {
-				b.CloseProvider(provider.Token)
+				b.CloseProvider(conn.Token)
 				return
 			}
 			b.buffer.Push(data)
 		}
 	}()
-	return conn, nil
 }
 
 // CloseProvider closes the connection to the given provider and exludes it from

@@ -1,4 +1,4 @@
-package gateway
+package store
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	MaxActionDelay  = 100
+	MaxRetries      = 2
 	ReservationTime = 5
 	sent            = 0
 	sealed          = 1
@@ -20,14 +20,15 @@ const (
 )
 
 type Propose struct {
-	data []byte
-	conn *socket.SignedConnection
+	Data []byte
+	Conn *socket.SignedConnection
 }
 
 type Pending struct {
-	action []byte
-	hash   crypto.Hash
-	origin *socket.SignedConnection
+	action  []byte
+	hash    crypto.Hash
+	origin  *socket.SignedConnection
+	retries byte
 }
 
 type Sealed struct {
@@ -43,6 +44,18 @@ type SealOnBlock struct {
 	Epoch     uint64
 	BlockHash crypto.Hash
 	Action    []byte
+}
+
+func (v *ActionVault) SealOnBlock(epoch uint64, sealHash crypto.Hash, Action []byte) {
+	v.seal <- SealOnBlock{
+		Epoch:     epoch,
+		BlockHash: sealHash,
+		Action:    Action,
+	}
+}
+
+func (v *ActionVault) Commit(hash crypto.Hash) {
+	v.commit <- hash
 }
 
 type PendingUpdate struct {
@@ -74,6 +87,24 @@ type ActionVault struct {
 	Push chan *Propose
 	// channel to trigger a clock update
 	timer chan struct{}
+}
+
+func NewActionVaultNoReply(ctx context.Context, epoch uint64, action chan []byte) *ActionVault {
+	propose := make(chan *Propose)
+	vault := NewActionVault(ctx, epoch, propose)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case data := <-action:
+				propose <- &Propose{
+					Data: data,
+				}
+			}
+		}
+	}()
+	return vault
 }
 
 func NewActionVault(ctx context.Context, epoch uint64, actions chan *Propose) *ActionVault {
@@ -113,10 +144,10 @@ func NewActionVault(ctx context.Context, epoch uint64, actions chan *Propose) *A
 					if !ok {
 						return
 					}
-					fmt.Println("new action", data)
 					if !vault.push(data) {
-						fmt.Println("new action deu ruim", data)
-						data.conn.Send([]byte{messages.MsgError})
+						if data.Conn != nil {
+							data.Conn.Send([]byte{messages.MsgError})
+						}
 					}
 				case sealed := <-vault.seal:
 					vault.sealAction(sealed.Action, sealed.Epoch, sealed.BlockHash)
@@ -135,10 +166,8 @@ func NewActionVault(ctx context.Context, epoch uint64, actions chan *Propose) *A
 					if !ok {
 						return
 					}
-					fmt.Println("new action ... ", data)
 					if !vault.push(data) {
-						fmt.Println("new action ... du ruim", data)
-						data.conn.Send([]byte{messages.MsgError})
+						data.Conn.Send([]byte{messages.MsgError})
 					}
 				case sealed := <-vault.seal:
 					vault.sealAction(sealed.Action, sealed.Epoch, sealed.BlockHash)
@@ -160,7 +189,10 @@ func (v *ActionVault) movenext() {
 	v.clock += 1
 	// liberates reserved actions not yet sealed
 	for _, pending := range v.sent[0] {
-		v.pending[pending.hash] = pending
+		if pending.retries < MaxRetries {
+			pending.retries += 1
+			v.pending[pending.hash] = pending
+		}
 	}
 	for n := 0; n < ReservationTime-1; n++ {
 		v.sent[n] = v.sent[n+1]
@@ -219,6 +251,8 @@ func (v *ActionVault) commitAction(hash crypto.Hash) {
 	}
 }
 
+// sentAction moves the pending action from pending hashmap to sent hashmap
+// and informs the connection of the action foarward status
 func (v *ActionVault) sentAction(pending *Pending) {
 	if pending == nil {
 		slog.Warn("ActionStore: sent called on unkown action")
@@ -235,6 +269,9 @@ func (v *ActionVault) sentAction(pending *Pending) {
 }
 
 func (v *ActionVault) pop() []byte {
+	defer func() {
+		fmt.Println("pop", len(v.pending))
+	}()
 	if len(v.pending) == 0 {
 		return nil
 	}
@@ -276,11 +313,12 @@ func (v *ActionVault) bucket(epoch uint64) int {
 }
 
 func (v *ActionVault) push(propose *Propose) bool {
-	if propose == nil || len(propose.data) == 0 {
+	if propose == nil || len(propose.Data) == 0 {
 		return false // invalid
 	}
-	action := actions.ParseAction(propose.data)
+	action := actions.ParseAction(propose.Data)
 	if action == nil {
+		fmt.Println("1 ruim")
 		return false // invalid
 	}
 	epoch := action.Epoch()
@@ -289,15 +327,17 @@ func (v *ActionVault) push(propose *Propose) bool {
 		firstEpoch = v.clock - MaxActionDelay
 	}
 	if epoch == 0 || epoch < firstEpoch || epoch > v.clock+MaxActionDelay {
+		fmt.Println("2 ruim")
 		return false // reject by epoch out of scope
 	}
-	if !v.isNew(crypto.Hasher(propose.data), epoch) {
+	if !v.isNew(crypto.Hasher(propose.Data), epoch) {
+		fmt.Println("3 ruim")
 		return true // already in the vault
 	}
 	pending := Pending{
-		action: propose.data,
-		hash:   crypto.Hasher(propose.data),
-		origin: propose.conn,
+		action: propose.Data,
+		hash:   crypto.Hasher(propose.Data),
+		origin: propose.Conn,
 	}
 	firstBucketEpoch := 0
 	if v.clock > MaxActionDelay {
@@ -305,6 +345,7 @@ func (v *ActionVault) push(propose *Propose) bool {
 	}
 	bucket := int(epoch) - firstBucketEpoch
 	if bucket < 0 || bucket > 2*MaxActionDelay {
+		fmt.Println("4 ruim")
 		slog.Error("ActionStore: bucket out of range", "bucket", bucket, "epoch", epoch, "current", v.clock)
 		return false // this should not happen
 	}

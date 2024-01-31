@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/freehandle/breeze/consensus/messages"
+	"github.com/freehandle/breeze/consensus/store"
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/middleware/admin"
 	"github.com/freehandle/breeze/middleware/config"
@@ -75,7 +76,7 @@ func NewServer(ctx context.Context, config Configuration, administration *admin.
 		return terminate
 	}
 
-	proposal := make(chan *Propose)
+	proposal := make(chan *store.Propose)
 	fmt.Println("launching gateway")
 	LaunchGateway(ctx, config, conn, topology, proposal)
 
@@ -138,7 +139,7 @@ func NewServer(ctx context.Context, config Configuration, administration *admin.
 	return terminate
 }
 
-func (s *Server) WaitForActions(conn *socket.SignedConnection, proposal chan *Propose, terminated *sync.WaitGroup) {
+func (s *Server) WaitForActions(conn *socket.SignedConnection, proposal chan *store.Propose, terminated *sync.WaitGroup) {
 	if conn == nil {
 		return
 	}
@@ -158,9 +159,9 @@ func (s *Server) WaitForActions(conn *socket.SignedConnection, proposal chan *Pr
 			break
 		}
 		if data[0] == messages.MsgAction && len(data) > 1 {
-			proposal <- &Propose{
-				data: data[1:],
-				conn: conn,
+			proposal <- &store.Propose{
+				Data: data[1:],
+				Conn: conn,
 			}
 		}
 	}

@@ -193,6 +193,11 @@ func (w *Window) AddSealedBlock(sealed *chain.SealedBlock) {
 		w.PrepareNewWindow()
 		w.hasPreparedNext = true
 	}
+	for n := 0; n < sealed.Actions.Len(); n++ {
+		action := sealed.Actions.Get(n)
+		hash := crypto.Hasher(action)
+		w.Node.actions.Exlude(hash)
+	}
 }
 
 func (w *Window) CanPrepareNextWindow() bool {

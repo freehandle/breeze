@@ -237,8 +237,7 @@ func Run(ctx context.Context, cfg *Config) (*Node, error) {
 func WaitForProtocolActions(conn *socket.SignedConnection, terminate chan crypto.Token, action chan []byte) {
 	for {
 		data, err := conn.Read()
-		fmt.Println("action", data)
-		if err != nil || len(data) < 2 || data[0] != messages.MsgActionSubmit {
+		if err != nil || len(data) < 2 {
 			if err != nil {
 				slog.Info("poa WaitForProtocolActions: connection terminated", "connection", err)
 			} else {
@@ -247,9 +246,6 @@ func WaitForProtocolActions(conn *socket.SignedConnection, terminate chan crypto
 			conn.Shutdown()
 			terminate <- conn.Token
 			return
-		}
-		if data[0] == messages.MsgChecksumStatement {
-			fmt.Println("got checksum statement")
 		}
 		action <- data
 	}

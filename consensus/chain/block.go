@@ -1,6 +1,8 @@
 package chain
 
 import (
+	"fmt"
+
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/protocol/actions"
 	"github.com/freehandle/breeze/protocol/state"
@@ -43,7 +45,9 @@ func (b *BlockBuilder) Hash() crypto.Hash {
 
 // Validates new action and appends it to the action array if valid.
 func (b *BlockBuilder) Validate(data []byte) bool {
+	fmt.Println("Validating action")
 	if b.Validator.Validate(data) {
+		fmt.Println("ok")
 		b.Actions.Append(data)
 		return true
 	}

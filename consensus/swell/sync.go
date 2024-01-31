@@ -77,8 +77,9 @@ func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync soc
 	}
 
 	node := &SwellNode{
-		blockchain:  chain.BlockchainFromChecksumState(checksum, clock, config.Credentials, config.SwellConfig.NetworkHash, config.SwellConfig.BlockInterval, config.SwellConfig.ChecksumWindow),
-		actions:     store.NewActionStore(ctx, checksum.Epoch),
+		blockchain: chain.BlockchainFromChecksumState(checksum, clock, config.Credentials, config.SwellConfig.NetworkHash, config.SwellConfig.BlockInterval, config.SwellConfig.ChecksumWindow),
+		//		actions:     store.NewActionStore(ctx, checksum.Epoch),
+		actions:     store.NewActionStore(ctx, checksum.Epoch, config.Relay.ActionGateway),
 		credentials: config.Credentials,
 		config:      config.SwellConfig,
 		relay:       config.Relay,
@@ -99,7 +100,7 @@ func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync soc
 	}
 	if standby == nil {
 		go node.ServeAdmin(ctx)
-		RunActionsGateway(ctx, config.Relay.ActionGateway, node.actions)
+		//RunActionsGateway(ctx, config.Relay.ActionGateway, node.actions)
 		RunNonValidatorNode(&window, conn, true)
 	} else {
 		standby <- RunReplicaNode(&window, conn)

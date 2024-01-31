@@ -8,6 +8,7 @@ import (
 
 	"github.com/freehandle/breeze/consensus/chain"
 	"github.com/freehandle/breeze/consensus/messages"
+	"github.com/freehandle/breeze/consensus/store"
 	"github.com/freehandle/breeze/consensus/swell"
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/socket"
@@ -60,10 +61,10 @@ type Gateway struct {
 	currentWindow    *WindowValidators
 	nextWindow       *WindowValidators
 	sealedBlocks     map[uint64]*chain.SealedBlock
-	store            *ActionVault
+	store            *store.ActionVault
 }
 
-func LaunchGateway(ctx context.Context, config Configuration, trusted *socket.SignedConnection, topology *messages.NetworkTopology, propose chan *Propose) {
+func LaunchGateway(ctx context.Context, config Configuration, trusted *socket.SignedConnection, topology *messages.NetworkTopology, propose chan *store.Propose) {
 	clock := NewClockSyn(topology.Start, topology.StartAt, config.Breeze.BlockInterval)
 	gateway := Gateway{
 		ctx:              ctx,
@@ -71,11 +72,18 @@ func LaunchGateway(ctx context.Context, config Configuration, trusted *socket.Si
 		sync:             clock,
 		liveActionRelays: make([]*socket.SignedConnection, 0),
 		activeFwdPool:    make([]*socket.SignedConnection, 0),
-		store:            NewActionVault(ctx, clock.Epoch, propose),
+		store:            store.NewActionVault(ctx, clock.Epoch, propose),
 	}
 
 	windowReady := LaunchWindow(ctx, config, topology.Start, topology.End, topology.Order, topology.Validators)
-	gateway.feedPool = socket.NewTrustedAgregator(ctx, config.Hostname, config.Credentials, TargetListenerSize, config.Trusted, topology.Validators, trusted)
+
+	listeners := make([]socket.TokenAddr, len(topology.Validators))
+	for n, val := range topology.Validators {
+		listeners[n] = socket.TokenAddr{Addr: fmt.Sprintf("%s:%d", val.Addr, config.BlockRelayPort), Token: val.Token}
+	}
+	gateway.feedPool = socket.NewTrustedAgregator(ctx, config.Hostname, config.Credentials, TargetListenerSize, config.Trusted, listeners, trusted)
+	gateway.feedPool.SendAll([]byte{messages.MsgSubscribeBlockEvents})
+	go gateway.Blockfeed()
 	gateway.ready = false
 	go func() {
 		done := ctx.Done()
@@ -85,7 +93,6 @@ func LaunchGateway(ctx context.Context, config Configuration, trusted *socket.Si
 				case window := <-windowReady:
 					gateway.currentWindow = window
 					gateway.activeFwdPool = window.GetPool(gateway.sync.Epoch)
-					fmt.Println("Gateway: current window", len(gateway.activeFwdPool))
 					for _, conn := range window.order {
 						isNew := true
 						for _, live := range gateway.liveActionRelays {
@@ -112,7 +119,7 @@ func LaunchGateway(ctx context.Context, config Configuration, trusted *socket.Si
 				case <-gateway.sync.Timer.C:
 					gateway.NextBlock()
 				case bytes := <-gateway.store.Pop:
-					gateway.Forward(bytes)
+					gateway.Forward(append([]byte{messages.MsgAction}, bytes...))
 				case conn := <-gateway.feedPool.Activate:
 					conn.Send([]byte{messages.MsgSubscribeBlockEvents})
 				}
@@ -129,7 +136,6 @@ func (g *Gateway) Forward(data []byte) {
 	}
 	for _, conn := range g.activeFwdPool {
 		if conn.Live {
-			fmt.Println("Gateway: Forwarding to", conn.Address, conn.Token)
 			if err := conn.Send(data); err != nil {
 				conn.Live = false
 			}
@@ -206,11 +212,7 @@ func (g *Gateway) PrepareNextWindow(order []crypto.Token, validators []socket.To
 func (g *Gateway) Sealed(sealed *chain.SealedBlock) {
 	for n := 0; n < sealed.Actions.Len(); n++ {
 		action := sealed.Actions.Get(n)
-		g.store.seal <- SealOnBlock{
-			Action:    action,
-			Epoch:     sealed.Header.Epoch,
-			BlockHash: sealed.Seal.Hash,
-		}
+		g.store.SealOnBlock(sealed.Header.Epoch, sealed.Seal.Hash, action)
 	}
 }
 
@@ -232,7 +234,7 @@ func (g *Gateway) Commit(epoch uint64, hash crypto.Hash, commit *chain.BlockComm
 		action := sealed.Actions.Get(n)
 		hash := crypto.Hasher(action)
 		if _, ok := invalid[hash]; !ok {
-			g.store.commit <- hash
+			g.store.Commit(hash)
 		}
 	}
 	// only commit once
@@ -250,7 +252,7 @@ func (g *Gateway) Blockfeed() {
 		case messages.MsgSealedBlock:
 			sealed := chain.ParseSealedBlock(data[1:])
 			if sealed != nil {
-
+				g.Sealed(sealed)
 			}
 		case messages.MsgCommit:
 			epoch, hash, bytes := messages.ParseEpochAndHash(data)

@@ -10,18 +10,18 @@ import (
 
 // TODO: this must be revised
 const (
-	MsgBlock          byte = iota // breeze protocol new block with heder
-	MsgAction                     // sinsgle action
-	MsgActionArray                // multiple actions
-	MsgSyncRequest                // Request Syncrhonization starting at given epoch
-	MsgActionSubmit               // Submit action to the network
-	MsgSyncError                  // Cannot synchronize
-	MsgNewBlock                   // Breeze new block with header
-	MsgSeal                       // Breeze Seal Block with seal
-	MsgCommit                     // Breeze Node own Commit Block with invalidated
-	MsgBuilding                   // Block under constructions
-	MsgSealedBlock                // Block Seal
-	MsgCommittedBlock             // Block Commit
+	MsgBlock       byte = iota // breeze protocol new block with heder
+	MsgAction                  // sinsgle action
+	MsgActionArray             // multiple actions
+	MsgSyncRequest             // Request Syncrhonization starting at given epoch
+	//MsgActionSubmit               // Submit action to the network
+	MsgSyncError      // Cannot synchronize
+	MsgNewBlock       // Breeze new block with header
+	MsgSeal           // Breeze Seal Block with seal
+	MsgCommit         // Breeze Node own Commit Block with invalidated
+	MsgBuilding       // Block under constructions
+	MsgSealedBlock    // Block Seal
+	MsgCommittedBlock // Block Commit
 
 	MsgProtocolHeader      // Sub-Protocol New Block Message
 	MsgProtocolActionArray // Sub-Protocol Action Array Message
@@ -133,7 +133,7 @@ func SyncMessage(epoch uint64) []byte {
 }
 
 func SubmitActionMessage(action []byte) []byte {
-	return append([]byte{MsgActionSubmit}, action...)
+	return append([]byte{MsgAction}, action...)
 }
 
 func SyncErrroMessage(msg string) []byte {

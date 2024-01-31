@@ -8,6 +8,7 @@ import (
 	"github.com/freehandle/breeze/consensus/messages"
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/protocol/actions"
+	"github.com/freehandle/breeze/socket"
 )
 
 type TransferCommand struct {
@@ -39,13 +40,11 @@ func (t *TransferCommand) Execute(safe *Kite) error {
 	if err != nil || fee < 0 {
 		return errors.New("invalid fee amount")
 	}
-	fmt.Println("dialing")
 	conn, epoch, err := safe.dialGateway()
 	if err != nil {
 		fmt.Print(err)
 		return err
 	}
-	fmt.Println("dialing ok")
 
 	transfer := actions.Transfer{
 		TimeStamp: epoch, // TODO
@@ -57,12 +56,37 @@ func (t *TransferCommand) Execute(safe *Kite) error {
 		Fee:    uint64(fee),
 	}
 	transfer.Sign(secret)
-	fmt.Println(transfer)
-	err = conn.Send(append([]byte{messages.MsgAction}, transfer.Serialize()...))
-	fmt.Println("ent")
+	err = SendAndConfirm(conn, transfer.Serialize())
 	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func SendAndConfirm(conn *socket.SignedConnection, msg []byte) error {
+	if err := conn.Send(append([]byte{messages.MsgAction}, msg...)); err != nil {
 		return fmt.Errorf("error sending transfer to gateway: %s", err)
 	}
+	resp, err := conn.Read()
+	if err != nil {
+		return fmt.Errorf("error receiving response from gateway: %s", err)
+	}
+	if len(resp) == 0 || resp[0] != messages.MsgActionForward {
+		return errors.New("action rejected by gateway")
+	}
+	resp, err = conn.Read()
+	if err != nil {
+		return fmt.Errorf("error receiving response from gateway: %s", err)
+	}
+	if resp[0] != messages.MsgActionSealed {
+		return errors.New("action rejected by gateway")
+	}
+	msgHash := crypto.Hasher(msg)
+	hash, epoch, sealHash := messages.ParseSealedAction(resp)
+	if epoch == 0 || !hash.Equal(msgHash) {
+		return errors.New("invalid sealed action")
+	}
+	fmt.Printf("action %v, incorporated into sealed block epoch %v with hash %v\n", hash, epoch, sealHash)
 	return nil
 }
 
@@ -114,9 +138,9 @@ func (s *StakeCommand) Execute(safe *Kite) error {
 		withdraw.Sign(secret)
 		msg = withdraw.Serialize()
 	}
-	err = conn.Send(append([]byte{messages.MsgAction}, msg...))
+	err = SendAndConfirm(conn, msg)
 	if err != nil {
-		return fmt.Errorf("error sending transfer to gateway: %s", err)
+		return err
 	}
 	return nil
 }
