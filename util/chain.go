@@ -2,6 +2,7 @@ package util
 
 import (
 	"context"
+	"fmt"
 )
 
 type orderedItem[T any] struct {
@@ -27,6 +28,8 @@ func (b *Chain[T]) Close() {
 func (b *Chain[T]) Pop() T {
 	var data T
 	if !b.live {
+		close(b.next)
+		close(b.read)
 		return data
 	}
 	b.next <- struct{}{}
@@ -51,8 +54,7 @@ func NewChain[T any](ctx context.Context, start uint64) *Chain[T] {
 	go func() {
 		defer func() {
 			chain.live = false
-			close(chain.read)
-			close(chain.next)
+			close(chain.write)
 		}()
 		buffer := make([]orderedItem[T], 0)
 		waiting := false
@@ -60,17 +62,21 @@ func NewChain[T any](ctx context.Context, start uint64) *Chain[T] {
 		for {
 			select {
 			case <-done:
-				close(chain.write)
+				return
 			case block, ok := <-chain.write:
 				if !ok {
 					return
 				}
+				if block.epoch < chain.Epoch {
+					continue
+				}
 				// if block is for current epoch and there is a waiting read,
 				// send it directly. Otherwise put the block in the right
 				// spot in the buffer.
+				fmt.Println("write", block.epoch, chain.Epoch, waiting)
 				if block.epoch == chain.Epoch && waiting {
 					chain.read <- block.data
-					chain.Epoch++
+					chain.Epoch += 1
 					waiting = false
 				} else {
 					inserted := false
@@ -91,7 +97,7 @@ func NewChain[T any](ctx context.Context, start uint64) *Chain[T] {
 				} else {
 					chain.read <- buffer[0].data
 					buffer = buffer[1:]
-					chain.Epoch++
+					chain.Epoch += 1
 					waiting = false
 				}
 			}

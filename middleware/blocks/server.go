@@ -21,16 +21,17 @@ type ProtocolRule struct {
 }
 
 type Config struct {
-	Credentials crypto.PrivateKey
-	DB          blockdb.DBConfig
-	Breeze      config.NetworkConfig
-	NetworkID   string
-	Port        int
-	Firewall    *socket.AcceptValidConnections
-	Hostname    string
-	Sources     []socket.TokenAddr
-	PoolSize    int
-	Protocol    *ProtocolRule
+	Credentials    crypto.PrivateKey
+	DB             blockdb.DBConfig
+	Breeze         config.NetworkConfig
+	NetworkID      string
+	Port           int
+	Firewall       *socket.AcceptValidConnections
+	Hostname       string
+	Sources        []socket.TokenAddr
+	PoolSize       int
+	Protocol       *ProtocolRule
+	BlockRelayPort int
 }
 
 type Server struct {
@@ -45,7 +46,7 @@ type Server struct {
 }
 
 func NewServer(ctx context.Context, adm *admin.Administration, config Config) chan error {
-	finalize := make(chan error, 1)
+	finalize := make(chan error, 2)
 	if config.Firewall == nil {
 		finalize <- fmt.Errorf("firewall config required")
 		return finalize
@@ -58,6 +59,7 @@ func NewServer(ctx context.Context, adm *admin.Administration, config Config) ch
 	var err error
 	listener.db, err = blockdb.NewBlockchainHistory(config.DB)
 	if err != nil {
+		fmt.Println(err)
 		cancel()
 		finalize <- err
 		return finalize
@@ -68,7 +70,6 @@ func NewServer(ctx context.Context, adm *admin.Administration, config Config) ch
 		finalize <- err
 		return finalize
 	}
-
 	if config.Protocol == nil {
 		standByNode, err := BreezeListener(ctx, config)
 		if err != nil {
@@ -78,7 +79,12 @@ func NewServer(ctx context.Context, adm *admin.Administration, config Config) ch
 		}
 		listener.provider = BreezeStandardProvider(ctx, standByNode)
 	} else {
-		sources := socket.NewTrustedAgregator(ctx, config.Hostname, config.Credentials, config.PoolSize, config.Sources, nil)
+		providers := make([]socket.TokenAddr, len(config.Sources))
+		for i, source := range config.Sources {
+			providers[i].Addr = fmt.Sprintf("%s:%d", source.Addr, config.BlockRelayPort)
+			providers[i].Token = source.Token
+		}
+		sources := socket.NewTrustedAgregator(ctx, config.Hostname, config.Credentials, config.PoolSize, providers, nil)
 		if sources == nil {
 			cancel()
 			finalize <- fmt.Errorf("failed to connect to sources")
@@ -112,6 +118,7 @@ func NewServer(ctx context.Context, adm *admin.Administration, config Config) ch
 	go func() {
 		for {
 			block := listener.provider.Pop()
+			fmt.Println("BlockListener: got block")
 			if block == nil {
 				return
 			}
@@ -157,23 +164,30 @@ func (b *Server) Broadcast(data []byte) {
 	}()
 }
 
-func BreezeListener(ctx context.Context, config Config) (*swell.StandByNode, error) {
-	if config.Firewall == nil {
+func BreezeListener(ctx context.Context, cfg Config) (*swell.StandByNode, error) {
+	if cfg.Firewall == nil {
 		return nil, fmt.Errorf("firewall config required")
 	}
-	cfg := swell.ValidatorConfig{
-		Credentials:    config.Credentials,
+	validatorCfg := swell.ValidatorConfig{
+		Credentials:    cfg.Credentials,
 		WalletPath:     "",
-		Hostname:       config.Hostname,
-		TrustedGateway: config.Sources,
+		Hostname:       cfg.Hostname,
+		TrustedGateway: cfg.Sources,
+		SwellConfig:    config.SwellConfigFromConfig(&cfg.Breeze, cfg.NetworkID),
 	}
 
-	standBy := make(chan *swell.StandByNode)
+	standBy := make(chan *swell.StandByNode, 2)
 	connectedToNetwork := false
-	for _, source := range config.Sources {
-		if err := swell.FullSyncValidatorNode(ctx, cfg, source, standBy); err == nil {
+	for _, source := range cfg.Sources {
+		service := socket.TokenAddr{
+			Addr:  fmt.Sprintf("%s:%d", source.Addr, cfg.BlockRelayPort),
+			Token: source.Token,
+		}
+		if err := swell.FullSyncValidatorNode(ctx, validatorCfg, service, standBy); err == nil {
 			connectedToNetwork = true
 			break
+		} else {
+			fmt.Println(err)
 		}
 	}
 	if !connectedToNetwork {

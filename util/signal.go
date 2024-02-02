@@ -18,6 +18,8 @@ func (b *Await) Close() {
 
 func (b *Await) Wait() bool {
 	if !b.live {
+		close(b.read)
+		close(b.next)
 		return false
 	}
 	b.next <- struct{}{}
@@ -46,8 +48,8 @@ func NewAwait(ctx context.Context) *Await {
 			close(signal.read)
 			close(signal.next)
 		}()
-		hasWrite := false
-		waitingRead := false
+		hasWrite := 0
+		waitingRead := 0
 		done := ctx.Done()
 		for {
 			select {
@@ -57,18 +59,18 @@ func NewAwait(ctx context.Context) *Await {
 				if !ok {
 					return
 				}
-				if waitingRead {
+				if waitingRead > 0 {
 					signal.read <- struct{}{}
-					waitingRead = false
+					waitingRead -= 1
 				} else {
-					hasWrite = true
+					hasWrite += 1
 				}
 			case <-signal.next:
-				if !hasWrite {
-					waitingRead = true
+				if hasWrite == 0 {
+					waitingRead += 1
 				} else {
 					signal.read <- struct{}{}
-					hasWrite = false
+					hasWrite -= 1
 				}
 			}
 		}

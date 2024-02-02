@@ -2,6 +2,7 @@ package blocks
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/freehandle/breeze/consensus/chain"
@@ -78,7 +79,8 @@ func SocialIndexerProvider(ctx context.Context, protocol uint32, sources *socket
 
 func BreezeIndexerProvider(ctx context.Context, standby *swell.StandByNode, idx func([]byte) []crypto.Hash) *util.Chain[*blockdb.IndexedBlock] {
 	epoch := standby.Blockchain.LastCommitEpoch
-	chain := util.NewChain[*blockdb.IndexedBlock](ctx, epoch)
+	fmt.Println("Breeze Indexer Provider: last commit epoch", epoch)
+	chain := util.NewChain[*blockdb.IndexedBlock](ctx, epoch+1)
 	go func() {
 		for {
 			if !standby.LastEvents.Wait() {

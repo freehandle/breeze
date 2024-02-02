@@ -20,12 +20,10 @@ import (
 // candidate to participate in consensus. Standby nodes have no relay and no
 // admin interface.
 func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync socket.TokenAddr, standby chan *StandByNode) error {
-
 	conn, err := socket.Dial(config.Hostname, sync.Addr, config.Credentials, sync.Token)
 	if err != nil {
 		return err
 	}
-
 	bytes := []byte{messages.MsgSyncRequest}
 	util.PutUint64(0, &bytes)
 	util.PutBool(true, &bytes)
@@ -79,13 +77,18 @@ func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync soc
 	node := &SwellNode{
 		blockchain: chain.BlockchainFromChecksumState(checksum, clock, config.Credentials, config.SwellConfig.NetworkHash, config.SwellConfig.BlockInterval, config.SwellConfig.ChecksumWindow),
 		//		actions:     store.NewActionStore(ctx, checksum.Epoch),
-		actions:     store.NewActionStore(ctx, checksum.Epoch, config.Relay.ActionGateway),
 		credentials: config.Credentials,
 		config:      config.SwellConfig,
 		relay:       config.Relay,
 		admin:       config.Admin,
 		hostname:    config.Hostname,
 	}
+	if config.Relay == nil || config.Relay.ActionGateway == nil {
+		node.actions = store.NewActionStore(ctx, checksum.Epoch, nil)
+	} else {
+		node.actions = store.NewActionStore(ctx, checksum.Epoch, config.Relay.ActionGateway)
+	}
+
 	windowDuration := uint64(config.SwellConfig.ChecksumWindow)
 	windowStart := windowDuration*(checksum.Epoch/windowDuration) + 1
 	window := Window{
@@ -104,6 +107,7 @@ func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync soc
 		RunNonValidatorNode(&window, conn, true)
 	} else {
 		standby <- RunReplicaNode(&window, conn)
+		fmt.Println(9)
 	}
 	return nil
 }

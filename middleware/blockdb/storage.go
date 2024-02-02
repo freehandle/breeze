@@ -72,7 +72,7 @@ func NewBlockStore(path string) (*BlockStore, error) {
 	}
 	filePath := filepath.Join(path, "blocks_0")
 	store := papirus.NewFileStore(filePath, 0)
-	if store != nil {
+	if store == nil {
 		return nil, fmt.Errorf("could not open filestore %s", filePath)
 	}
 	return &BlockStore{

@@ -70,6 +70,9 @@ type hashaction struct {
 // actions.
 // Users should use Epoch channel to update the store epoch.
 func NewActionStore(ctx context.Context, epoch uint64, actions chan []byte) *ActionStore {
+	if actions == nil {
+		actions = make(chan []byte)
+	}
 	store := &ActionStore{
 		Live:     true,
 		data:     make(map[crypto.Hash]*StoredAction),
@@ -83,6 +86,7 @@ func NewActionStore(ctx context.Context, epoch uint64, actions chan []byte) *Act
 	for n := 0; n < len(store.epoch); n++ {
 		store.epoch[n] = make([]crypto.Hash, 0)
 	}
+
 	go func() {
 		defer func() {
 			store.Live = false
