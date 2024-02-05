@@ -21,6 +21,8 @@ func (b *DataQueue[T]) Close() {
 func (b *DataQueue[T]) Pop() T {
 	var data T
 	if !b.live {
+		close(b.read)
+		close(b.next)
 		return data
 	}
 	b.next <- struct{}{}
@@ -67,6 +69,9 @@ func NewSimpleDataQueue[T any](ctx context.Context) *DataQueue[T] {
 			case <-dataQueue.next:
 				if len(buffer) == 0 {
 					waiting = true
+				} else {
+					dataQueue.read <- buffer[0]
+					buffer = buffer[1:]
 				}
 			}
 		}
@@ -85,8 +90,6 @@ func NewDataQueueWithHashFunc[T any](ctx context.Context, hash func(T) crypto.Ha
 	go func() {
 		defer func() {
 			dataQueue.live = false
-			close(dataQueue.read)
-			close(dataQueue.next)
 		}()
 		buffer := make([]T, 0)
 		waiting := false
@@ -108,9 +111,15 @@ func NewDataQueueWithHashFunc[T any](ctx context.Context, hash func(T) crypto.Ha
 				} else {
 					buffer = append(buffer, data)
 				}
-			case <-dataQueue.next:
+			case _, ok := <-dataQueue.next:
+				if !ok {
+					return
+				}
 				if len(buffer) == 0 {
 					waiting = true
+				} else {
+					dataQueue.read <- buffer[0]
+					buffer = buffer[1:]
 				}
 			}
 		}

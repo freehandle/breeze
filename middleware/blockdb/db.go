@@ -1,6 +1,7 @@
 package blockdb
 
 import (
+	"fmt"
 	"path/filepath"
 
 	"github.com/freehandle/breeze/crypto"
@@ -81,8 +82,10 @@ type IndexedBlock struct {
 }
 
 func (b *BlockchainHistory) IncorporateBlock(indexed *IndexedBlock) error {
+	fmt.Println(indexed.Epoch, len(indexed.Data), len(indexed.Items))
 	err := b.Storage.AppendBlock(indexed.Data, int64(indexed.Epoch))
 	if err != nil {
+		fmt.Println(err)
 		return err
 	}
 	if b.Index == nil {
@@ -150,7 +153,7 @@ func (b *BlockStore) GetItem(epoch int64, offset int64) []byte {
 	if epoch > b.LastCommit {
 		return nil
 	}
-	age := (epoch - 1/Age)
+	age := (epoch - 1) / Age
 	if age >= int64(len(b.Ages)) {
 		return nil
 	}

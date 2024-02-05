@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
 
 	"github.com/freehandle/breeze/crypto"
+	"github.com/freehandle/breeze/middleware/blocks"
 	"github.com/freehandle/breeze/socket"
 	"github.com/freehandle/breeze/util"
 )
@@ -285,4 +287,15 @@ func (safe *Kite) dialGateway() (*socket.SignedConnection, uint64, error) {
 	epoch, _ := util.ParseUint64(epochData, 0)
 	fmt.Println(epoch)
 	return conn, epoch, nil
+}
+
+func (k *Kite) dialBlockDatabase(ctx context.Context) (*blocks.BlocksClient, error) {
+	if k.Listener == "" {
+		return nil, errors.New("no listener configured")
+	}
+	node := k.findNode(k.Listener)
+	if node.ID == "" {
+		return nil, errors.New("configured listener not found")
+	}
+	return blocks.DialBlocksProvider(ctx, "localhost", node.Host, k.vault.SecretKey, node.Token)
 }

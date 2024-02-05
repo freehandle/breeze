@@ -65,6 +65,7 @@ func NewServer(ctx context.Context, adm *admin.Administration, config Config) ch
 		return finalize
 	}
 	newConnListener, err := socket.Listen(fmt.Sprintf("%s:%d", config.Hostname, config.Port))
+	fmt.Println("listening to port:", config.Port)
 	if err != nil {
 		cancel()
 		finalize <- err
@@ -118,10 +119,10 @@ func NewServer(ctx context.Context, adm *admin.Administration, config Config) ch
 	go func() {
 		for {
 			block := listener.provider.Pop()
-			fmt.Println("BlockListener: got block")
 			if block == nil {
 				return
 			}
+			fmt.Println("new block...", block.Epoch)
 			if err := listener.db.IncorporateBlock(block); err != nil {
 				slog.Warn("BlockListener: failed to incorporate block", "error", err)
 			}
@@ -140,9 +141,11 @@ func NewServer(ctx context.Context, adm *admin.Administration, config Config) ch
 			if err != nil {
 				slog.Info("BlockListener: connection rejected", "error", err)
 			}
+			fmt.Println("new listener...")
 			listener.mu.Lock()
 			listener.live = append(listener.live, trusted)
 			listener.mu.Unlock()
+			listener.WaitForRequests(trusted)
 		}
 	}()
 	return finalize

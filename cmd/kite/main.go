@@ -29,7 +29,9 @@ The commands are:
 	deposit	  deposit tokens in account
 	withdraw  withdraw tokens from account
 	balance	  get token balanece information of given account
-	
+	list      list all events associated to a token on breeze network
+
+
 Use "safe help <command>" for more information about a command.
 
 `
@@ -53,6 +55,7 @@ const (
 	balanceCmd
 	configCmd
 	showCmd
+	listCmd
 )
 
 func readPassword(phrase string) []byte {
@@ -123,6 +126,8 @@ func parseCommand() byte {
 		return configCmd
 	case "show":
 		return showCmd
+	case "list":
+		return listCmd
 	default:
 		return noCmd
 	}

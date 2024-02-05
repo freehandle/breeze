@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
@@ -150,5 +151,43 @@ type BalanceCommand struct {
 }
 
 func (c *BalanceCommand) Execute(vault *Kite) error {
+	return nil
+}
+
+type ListCommand struct {
+	Token string
+	Epoch string
+}
+
+func (c *ListCommand) Execute(vault *Kite) error {
+	token := crypto.TokenFromString(c.Token)
+	if token == crypto.ZeroToken {
+		return errors.New("invalid token")
+	}
+	epoch := 0
+	var err error
+	if c.Epoch != "" {
+		epoch, err := strconv.Atoi(c.Epoch)
+		if err != nil || epoch < 0 {
+			return errors.New("invalid epoch")
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	provider, err := vault.dialBlockDatabase(ctx)
+	if err != nil {
+
+		return err
+	}
+	actionList, err := provider.RequestActions(uint64(epoch), 0, crypto.HashToken(token))
+	if err != nil {
+		return err
+	}
+	for _, bytes := range actionList {
+		action := actions.ParseAction(bytes)
+		if action != nil {
+			fmt.Println(action.JSON())
+		}
+	}
 	return nil
 }

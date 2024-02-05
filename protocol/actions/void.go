@@ -35,6 +35,20 @@ func (t *Void) serializeSign() []byte {
 	return bytes
 }
 
+func (t *Void) JSON() string {
+	bulk := &util.JSONBuilder{}
+	bulk.PutString("kind", "void")
+	bulk.PutUint64("version", 0)
+	bulk.PutUint64("instructionType", uint64(IVoid))
+	bulk.PutUint64("epoch", t.TimeStamp)
+	bulk.PutUint64("protocol", uint64(t.Protocol))
+	bulk.PutBase64("data", t.Data)
+	bulk.PutUint64("fee", t.Fee)
+	bulk.PutHex("wallet", t.Wallet[:])
+	bulk.PutBase64("signature", t.Signature[:])
+	return bulk.ToString()
+}
+
 func (t *Void) Serialize() []byte {
 	bytes := t.serializeSign()
 	util.PutSignature(t.Signature, &bytes)

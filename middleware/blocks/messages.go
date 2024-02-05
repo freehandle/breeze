@@ -1,6 +1,7 @@
 package blocks
 
 import (
+	"fmt"
 	"log/slog"
 
 	"github.com/freehandle/breeze/crypto"
@@ -17,6 +18,7 @@ const (
 	OutOfOrderError
 	ActionHistoryResponse
 	BlockHistoryResponse
+	Complete
 )
 
 func (l *Server) WaitForRequests(conn *socket.SignedConnection) {
@@ -36,6 +38,7 @@ func (l *Server) WaitForRequests(conn *socket.SignedConnection) {
 		data, err := conn.Read()
 		if err != nil {
 			slog.Info("connection closed", "token", conn.Token.String(), "address", conn.Address, "err", err)
+			return
 		}
 		if len(data) < 5 {
 			continue
@@ -57,16 +60,20 @@ func (l *Server) WaitForRequests(conn *socket.SignedConnection) {
 			}
 
 		case ActionHistoryRequest:
-			if len(data) != 1+32 {
-				if err := conn.Send([]byte{ResponseError}); err != nil {
+			fmt.Println("new request...", len(data), data)
+			req := ParseActionHistoryRequest(data)
+			if req == nil {
+				resp := []byte{ResponseError, data[1], data[2], data[3], data[4]}
+				if err := conn.Send(resp); err != nil {
+					slog.Info("error sending response", "err", err, "token", conn.Token.String(), "address", conn.Address)
 					return
 				}
-				continue
+			} else {
+				go l.GetActions(req.Hash, req.Start, req.Seq, conn)
 			}
 		}
 		seq += 1
 	}
-
 }
 
 func ParseHistoryRequest(data []byte) (uint64, uint64) {
@@ -76,10 +83,31 @@ func ParseHistoryRequest(data []byte) (uint64, uint64) {
 	return start, end
 }
 
-func ParseActionHistoryRequest(data []byte) crypto.Hash {
-	var hash crypto.Hash
-	hash, _ = util.ParseHash(data, 9)
-	return hash
+type actionHistoryRequest struct {
+	Seq       uint32
+	Start     uint64
+	End       uint64
+	Subscribe bool
+	Hash      crypto.Hash
+}
+
+func ParseActionHistoryRequest(data []byte) *actionHistoryRequest {
+	var req actionHistoryRequest
+	if len(data) == 0 || data[0] != ActionHistoryRequest {
+		return nil
+	}
+	position := 1
+	req.Seq, position = util.ParseUint32(data, position)
+	req.Start, position = util.ParseUint64(data, position)
+	req.End, position = util.ParseUint64(data, position)
+	req.Subscribe, position = util.ParseBool(data, position)
+	req.Hash, position = util.ParseHash(data, position)
+	if position != len(data) {
+		fmt.Println("invalid action history request", len(data), position)
+		return nil
+	}
+	fmt.Printf("%+v\n", req)
+	return &req
 }
 
 func (l *Server) GetActions(hash crypto.Hash, epoch uint64, seq uint32, conn *socket.SignedConnection) {
@@ -94,7 +122,7 @@ func (l *Server) GetActions(hash crypto.Hash, epoch uint64, seq uint32, conn *so
 				conn.Shutdown()
 				return
 			}
-			data = data[0:9]
+			data = data[0:5]
 			actions = actions[1000:]
 		} else {
 			util.PutActionsArray(actions, &data)
@@ -105,7 +133,8 @@ func (l *Server) GetActions(hash crypto.Hash, epoch uint64, seq uint32, conn *so
 		}
 	}
 	// an empty action to indicate end of transmission
-	if err := conn.Send(data[0:9]); err != nil {
+	data[0] = Complete
+	if err := conn.Send(data[0:5]); err != nil {
 		conn.Shutdown()
 	}
 }

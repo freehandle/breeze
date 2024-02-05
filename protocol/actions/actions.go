@@ -61,6 +61,7 @@ type Action interface {
 	Kind() byte
 	FeePaid() uint64
 	Tokens() []crypto.Token
+	JSON() string
 }
 
 // NewPayment creates a new payment with a debit account and value.

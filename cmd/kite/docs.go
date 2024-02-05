@@ -110,6 +110,13 @@ const helpConfig = `usage: kite <path-tovault-file> config <variable> <node-id>
 Will instruct node to config a given variable to appointed node identified by the ID
 `
 
+const helpList = `usage: kite <path-to-vault-file> list <token> [epoch]
+
+Will query the configured block database for all actions associated to the token
+on the breeze network blockchain after the given epoch. If the epoch is not
+provided, the query will start from the genesis block.
+`
+
 func help(cmd string) {
 	switch cmd {
 	case "create":
@@ -140,6 +147,9 @@ func help(cmd string) {
 		fmt.Print(helpBalance)
 	case "config":
 		fmt.Print(helpConfig)
+	case "list":
+		fmt.Print(helpList)
+
 	default:
 		fmt.Print(usage)
 	}

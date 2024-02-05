@@ -2,6 +2,7 @@ package index
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/freehandle/breeze/crypto"
@@ -79,6 +80,7 @@ func (i *Index) Get(hash crypto.Hash, starting uint64) []IndexPosition {
 }
 
 func (i *Index) Append(hash crypto.Hash, epoch uint64, offset int) {
+	fmt.Println(crypto.EncodeHash(hash), epoch, offset)
 	data := append(hash[:i.indexSize], byte(epoch), byte(epoch>>8), byte(epoch>>16), byte(epoch>>24), byte(offset), byte(offset>>8), byte(offset>>16), byte(offset>>24))
 	bucket := roundIndexToken(hash, i.bitsForBucket)
 	lastBucket := i.lastBucket[bucket]

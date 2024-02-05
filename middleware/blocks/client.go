@@ -51,8 +51,18 @@ func (c *BlocksClient) RequestActions(start, end uint64, hash crypto.Hash) ([][]
 		if !ok {
 			return data, nil
 		}
-		if len(action) > 0 {
-			data = append(data, action)
+		if len(action) > 5 {
+			actions, _ := util.ParseActionsArray(action, 5)
+			if action == nil {
+				fmt.Println("invalid action response")
+			}
+			data = append(data, actions...)
+		} else if action[0] == ResponseError {
+			return nil, fmt.Errorf("error response from server")
+		} else if action[0] == Complete {
+			return data, nil
+		} else {
+			return nil, fmt.Errorf("unexpected response from server")
 		}
 	}
 }
@@ -127,11 +137,12 @@ func pipeBytesToBlock(in chan []byte) chan *chain.CommitBlock {
 }
 
 func DialBlocksProvider(ctx context.Context, hostname, addr string, credentials crypto.PrivateKey, token crypto.Token) (*BlocksClient, error) {
+	fmt.Println("DialBlocksProvider", hostname, addr)
 	conn, err := socket.Dial(hostname, addr, credentials, token)
 	if err != nil {
 		return nil, fmt.Errorf("could not dial %s: %s", addr, err)
 	}
-
+	fmt.Println("Dialed")
 	client := BlocksClient{
 		live:    true,
 		conn:    conn,
@@ -180,6 +191,7 @@ func DialBlocksProvider(ctx context.Context, hostname, addr string, credentials 
 				}
 				response[seq] = req.Actions
 			case data, ok := <-connData:
+				fmt.Println(data)
 				if !ok {
 					return
 				}
@@ -191,7 +203,7 @@ func DialBlocksProvider(ctx context.Context, hostname, addr string, credentials 
 					resp <- data
 					// server should never sent a end of stream message in
 					// subscription
-					if len(data) == 5 {
+					if data[0] == ResponseError || data[0] == Complete {
 						close(resp)
 						delete(response, dataSeq)
 					}
@@ -209,13 +221,16 @@ func DialBlocksProvider(ctx context.Context, hostname, addr string, credentials 
 			if len(data) == 0 {
 				continue
 			}
-			if len(data) >= 5 {
+			if data[0] == Complete {
 				connData <- data
-			} else if data[1] == Bye {
+				return
+			} else if data[0] == Bye {
 				close(connData)
 				client.live = false
 				// conn shutdown managed by the other go-routine
 				return
+			} else if len(data) >= 5 {
+				connData <- data
 			}
 		}
 	}()

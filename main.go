@@ -81,7 +81,7 @@ func TestSwell() {
 				Fee:       1,
 			}
 			transfer.Sign(mainserver)
-			if err := conn.Send(append([]byte{messages.MsgActionSubmit}, transfer.Serialize()...)); err != nil {
+			if err := conn.Send(append([]byte{messages.MsgAction}, transfer.Serialize()...)); err != nil {
 				fmt.Println(err)
 				return
 			}

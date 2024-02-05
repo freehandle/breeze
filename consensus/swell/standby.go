@@ -2,7 +2,6 @@ package swell
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 
 	"github.com/freehandle/breeze/consensus/chain"
@@ -83,12 +82,10 @@ func RunReplicaNode(w *Window, conn *socket.SignedConnection) *StandByNode {
 				slog.Info("RunReplicaNode: new window received", "start", next.window.Start, "end", next.window.End)
 			case sealed := <-newSealed:
 				epoch := sealed.Header.Epoch
-				fmt.Println(sealed.Header.Epoch, "sealed block received")
 				if !node.LastEvents.Call() {
 					slog.Warn("RunReplicaNode: Await is closed.")
 					return
 				}
-				fmt.Println(sealed.Header.Epoch, "sealed block informed")
 				found := false
 				for _, w := range activeWindows {
 					if epoch >= w.window.Start && epoch <= w.window.End {
@@ -97,7 +94,6 @@ func RunReplicaNode(w *Window, conn *socket.SignedConnection) *StandByNode {
 						break
 					}
 				}
-				fmt.Println(sealed.Header.Epoch, "sealed block forwarded to window")
 				if !found {
 					slog.Warn("RunReplicaNode: sealed block received out of window", "epoch", epoch, "window start", w.Start, "window end", w.End)
 				}

@@ -2,7 +2,6 @@ package util
 
 import (
 	"context"
-	"fmt"
 )
 
 type orderedItem[T any] struct {
@@ -73,19 +72,26 @@ func NewChain[T any](ctx context.Context, start uint64) *Chain[T] {
 				// if block is for current epoch and there is a waiting read,
 				// send it directly. Otherwise put the block in the right
 				// spot in the buffer.
-				fmt.Println("write", block.epoch, chain.Epoch, waiting)
 				if block.epoch == chain.Epoch && waiting {
 					chain.read <- block.data
 					chain.Epoch += 1
 					waiting = false
 				} else {
 					inserted := false
+					repeated := false
 					for n, item := range buffer {
+						if item.epoch == block.epoch {
+							repeated = true
+							break
+						}
 						if item.epoch > block.epoch {
 							buffer = append(append(buffer[0:n], block), buffer[n:]...)
 							inserted = true
 							break
 						}
+					}
+					if repeated {
+						continue
 					}
 					if !inserted {
 						buffer = append(buffer, block)

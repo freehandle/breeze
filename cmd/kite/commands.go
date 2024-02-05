@@ -75,6 +75,20 @@ func parseCommandArgs(cmd byte, args []string) Command {
 		}
 	case nodesCmd:
 		return &NodesCommand{}
+	case listCmd:
+		if len(args) < 1 {
+			fmt.Println("insufficient arguments")
+		}
+		if len(args) == 1 {
+			return &ListCommand{
+				Token: args[0],
+			}
+		} else {
+			return &ListCommand{
+				Token: args[0],
+				Epoch: args[1],
+			}
+		}
 	case transferCmd:
 		if len(args) < 4 {
 			fmt.Println("insufficient arguments")
