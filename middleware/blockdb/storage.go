@@ -16,10 +16,10 @@ const Age = 7 * 24 * 60 * 60 // One week
 const prefix = "blockage_"
 
 type BlockStore struct {
-	Ages       []papirus.ByteStore
-	Offsets    [][Age]int64 // start of each block within age
-	LastCommit int64
-	path       string
+	Ages         []papirus.ByteStore
+	BlocksOffset [][Age]int64 // start of each block within age
+	LastCommit   int64
+	path         string
 }
 
 func lastOffset(offsets [Age]int64) int {
@@ -65,9 +65,9 @@ func OpenAge(filePath string) (papirus.ByteStore, [Age]int64, error) {
 func NewBlockStore(path string) (*BlockStore, error) {
 	if path == "" {
 		return &BlockStore{
-			Ages:    []papirus.ByteStore{papirus.NewMemoryStore(0)},
-			Offsets: make([][Age]int64, 1),
-			path:    path,
+			Ages:         []papirus.ByteStore{papirus.NewMemoryStore(0)},
+			BlocksOffset: make([][Age]int64, 0),
+			path:         path,
 		}, nil
 	}
 	filePath := filepath.Join(path, "blocks_0")
@@ -76,9 +76,9 @@ func NewBlockStore(path string) (*BlockStore, error) {
 		return nil, fmt.Errorf("could not open filestore %s", filePath)
 	}
 	return &BlockStore{
-		Ages:    []papirus.ByteStore{store},
-		Offsets: make([][Age]int64, 1),
-		path:    path,
+		Ages:         []papirus.ByteStore{store},
+		BlocksOffset: make([][Age]int64, 0),
+		path:         path,
 	}, nil
 }
 
@@ -112,20 +112,20 @@ func OpenBlockStore(path string) (*BlockStore, error) {
 		}
 	}
 	store := BlockStore{
-		Ages:    make([]papirus.ByteStore, len(values)),
-		Offsets: make([][Age]int64, len(values)),
-		path:    path,
+		Ages:         make([]papirus.ByteStore, len(values)),
+		BlocksOffset: make([][Age]int64, len(values)),
+		path:         path,
 	}
 	for n := 0; n < len(values); n++ {
 		var err error
-		store.Ages[n], store.Offsets[n], err = OpenAge(filepath.Join(path, fmt.Sprintf("blocks_%d.dat", n)))
+		store.Ages[n], store.BlocksOffset[n], err = OpenAge(filepath.Join(path, fmt.Sprintf("blocks_%d.dat", n)))
 		if err != nil {
 			for m := 0; m < n; m++ {
 				store.Ages[m].Close()
 			}
 			return nil, err
 		}
-		if (n != len(values)-1) && lastOffset(store.Offsets[n]) != Age {
+		if (n != len(values)-1) && lastOffset(store.BlocksOffset[n]) != Age {
 			for m := 0; m < n; m++ {
 				store.Ages[m].Close()
 			}
@@ -133,7 +133,7 @@ func OpenBlockStore(path string) (*BlockStore, error) {
 		}
 
 		if n != len(values)-1 {
-			store.LastCommit = int64(n*Age + lastOffset(store.Offsets[n]))
+			store.LastCommit = int64(n*Age + lastOffset(store.BlocksOffset[n]))
 		}
 	}
 	return &store, nil
@@ -145,8 +145,10 @@ func (b *BlockStore) AppendBlock(data []byte, epoch int64) error {
 	}
 	// Age 1 epoch 1 to 900
 	// Age 2 epoch 901 to 1800
-	if epoch%Age == 1 {
-		b.Offsets = append(b.Offsets, [Age]int64{})
+	if epoch%Age == 1 || len(b.BlocksOffset) == 0 {
+		var newoffsets [Age]int64
+		newoffsets[(epoch-1)%Age] = int64(len(data)) + 8
+		b.BlocksOffset = append(b.BlocksOffset, newoffsets)
 		if b.path == "" {
 			b.Ages = append(b.Ages, papirus.NewMemoryStore(0))
 		} else {
@@ -157,6 +159,9 @@ func (b *BlockStore) AppendBlock(data []byte, epoch int64) error {
 			}
 			b.Ages = append(b.Ages, store)
 		}
+	} else {
+		b.BlocksOffset[len(b.BlocksOffset)-1][(epoch-1)%Age] = b.BlocksOffset[len(b.BlocksOffset)-1][(epoch-2)%Age] + int64(len(data)) + 8
+		fmt.Println("offset", len(b.BlocksOffset)-1, epoch, b.BlocksOffset[len(b.BlocksOffset)-1][(epoch-1)%Age])
 	}
 	fileCount := (epoch - 1) / Age
 	store := b.Ages[fileCount]

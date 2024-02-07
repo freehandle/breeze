@@ -3,6 +3,7 @@ package socket
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"math/rand"
 
@@ -21,6 +22,7 @@ type Aggregator struct {
 	providers   []*SignedConnection
 	cancel      chan crypto.Token
 	add         chan *SignedConnection
+	count       chan int
 	cancelall   chan struct{}
 	closed      chan *SignedConnection
 }
@@ -61,7 +63,6 @@ func NewTrustedAgregator(ctx context.Context, hostname string, credentials crypt
 	}
 	closed := make(chan *SignedConnection)
 	trst.aggregator.closed = closed
-
 	for _, conn := range available {
 		isUntrusted := true
 		for _, trust := range trusted {
@@ -74,6 +75,17 @@ func NewTrustedAgregator(ctx context.Context, hostname string, credentials crypt
 			trst.untrusty = append(trst.untrusty, conn)
 		}
 	}
+	for {
+		if count := <-trst.aggregator.count; count >= size {
+			break
+		}
+		replace := trst.TryAddProvider()
+		if replace != nil {
+			trst.Activate <- replace
+		} else {
+			break
+		}
+	}
 
 	go func() {
 		defer close(trst.Activate)
@@ -84,27 +96,33 @@ func NewTrustedAgregator(ctx context.Context, hostname string, credentials crypt
 				return
 			}
 			trst.closed = append(trst.closed, TokenAddr{Token: conn.Token, Addr: conn.Address})
-			conn, err := trst.aggregator.AddNewOne(trst.trusty)
-			if err == nil {
-				trst.Activate <- conn
-				continue
-			}
-			conn, err = trst.aggregator.AddNewOne(trst.untrusty)
-			if err == nil {
-				trst.Activate <- conn
-				continue
-			}
-			if len(trst.closed) > 0 {
-				conn, err = trst.aggregator.AddNewOne(trst.closed)
-				if err == nil {
-					trst.Activate <- conn
-				} else {
-					slog.Info("TrustedAggregator could not keep target sample size")
-				}
+			replace := trst.TryAddProvider()
+			if replace != nil {
+				trst.Activate <- replace
+			} else {
+				slog.Info("no more providers to replace")
 			}
 		}
 	}()
 	return &trst
+}
+
+// TryAddProvider will try to add a new provider to the aggregator. It will try
+// to add a trusted provider first, then an untrusted provider, and finally a
+// closed provider. If it cannot add any provider, it will return nil.
+func (t *TrustedAggregator) TryAddProvider() *SignedConnection {
+	if conn, err := t.aggregator.AddNewOne(t.trusty); err == nil {
+		return conn
+	}
+	if conn, err := t.aggregator.AddNewOne(t.untrusty); err == nil {
+		return conn
+	}
+	if len(t.closed) > 0 {
+		if conn, err := t.aggregator.AddNewOne(t.closed); err == nil {
+			return conn
+		}
+	}
+	return nil
 }
 
 // NewAgregator creates a new aggregator. The aggregator is live until the context
@@ -118,13 +136,13 @@ func NewAgregator(ctx context.Context, hostname string, credentials crypto.Priva
 		cancel:      make(chan crypto.Token),
 		cancelall:   make(chan struct{}),
 		add:         make(chan *SignedConnection),
+		count:       make(chan int),
 		buffer:      util.NewDataQueueWithHashFunc(ctx, crypto.Hasher),
 	}
-	if len(connections) == 0 {
-		aggregator.providers = make([]*SignedConnection, 0)
-	} else {
-		aggregator.providers = connections
-		for _, conn := range connections {
+	aggregator.providers = make([]*SignedConnection, 0)
+	for _, conn := range connections {
+		if conn != nil {
+			aggregator.providers = append(aggregator.providers, conn)
 			aggregator.addConnection(conn)
 		}
 	}
@@ -147,7 +165,10 @@ func NewAgregator(ctx context.Context, hostname string, credentials crypto.Priva
 			case conn, ok := <-aggregator.add:
 				if ok {
 					aggregator.providers = append(aggregator.providers, conn)
+					fmt.Println("adding provider to aggregator:", len(aggregator.providers))
 				}
+			case aggregator.count <- len(aggregator.providers):
+				// do nothing
 			case token, ok := <-aggregator.cancel:
 				if ok {
 					for i, provider := range aggregator.providers {
@@ -229,6 +250,9 @@ func (b *Aggregator) AddOne(peers []TokenAddr) (*SignedConnection, error) {
 //
 //	peers, an error is returned.
 func (b *Aggregator) AddNewOne(peers []TokenAddr) (*SignedConnection, error) {
+	if len(peers) == 0 {
+		return nil, errors.New("no new peers provided")
+	}
 	value := rand.Intn(len(peers))
 	for n := 0; n < len(peers); n++ {
 		peer := (value + n) % len(peers)
@@ -248,6 +272,9 @@ func (b *Aggregator) AddProvider(provider TokenAddr) (*SignedConnection, error) 
 	conn, err := Dial(b.hostname, provider.Addr, b.credentials, provider.Token)
 	if err != nil {
 		return nil, err
+	}
+	if conn == nil {
+		return nil, errors.New("could not connect to provider")
 	}
 	if !b.live {
 		conn.Shutdown()

@@ -82,7 +82,6 @@ type IndexedBlock struct {
 }
 
 func (b *BlockchainHistory) IncorporateBlock(indexed *IndexedBlock) error {
-	fmt.Println(indexed.Epoch, len(indexed.Data), len(indexed.Items))
 	err := b.Storage.AppendBlock(indexed.Data, int64(indexed.Epoch))
 	if err != nil {
 		fmt.Println(err)
@@ -157,10 +156,17 @@ func (b *BlockStore) GetItem(epoch int64, offset int64) []byte {
 	if age >= int64(len(b.Ages)) {
 		return nil
 	}
-	blockOffset := b.Offsets[age][(epoch-1)%Age]
+	blockOffset := int64(0)
+	if epoch%Age > 1 {
+		fmt.Println("epoch % Age", age, (epoch-2)%Age, b.BlocksOffset[age][(epoch-2)%Age])
+		blockOffset = b.BlocksOffset[age][(epoch-2)%Age]
+	}
 	bytes := b.Ages[age].ReadAt(blockOffset+8+offset, 2)
 	size, _ := util.ParseUint16(bytes, 0)
-	return b.Ages[age].ReadAt(blockOffset+8+offset+2, int64(size))
+
+	fmt.Println(epoch, age, blockOffset, offset, size)
+	item := b.Ages[age].ReadAt(blockOffset+8+offset+2, int64(size))
+	return item
 }
 
 func (b *BlockStore) GetBlock(epoch int64) []byte {
@@ -171,7 +177,7 @@ func (b *BlockStore) GetBlock(epoch int64) []byte {
 	if age >= int64(len(b.Ages)) {
 		return nil
 	}
-	blockOffset := b.Offsets[age][(epoch-1)%Age]
+	blockOffset := b.BlocksOffset[age][(epoch-1)%Age]
 	bytes := b.Ages[age].ReadAt(blockOffset, 8)
 	size, _ := util.ParseUint64(bytes, 0)
 	return b.Ages[age].ReadAt(blockOffset+8, int64(size))

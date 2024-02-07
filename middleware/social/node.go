@@ -39,8 +39,12 @@ func launchNodeFromStateWithConnection[M Merger[M], B Blocker[M]](ctx context.Co
 		return finalize
 	}
 	engine := NewEngine[M, B](ctx, blockchain)
-	sources := socket.NewTrustedAgregator(ctx, cfg.Hostname, cfg.Credentials, cfg.ProvidersSize, cfg.TrustedProviders, nil, existingConnection)
-
+	var sources *socket.TrustedAggregator
+	if existingConnection == nil {
+		sources = socket.NewTrustedAgregator(ctx, cfg.Hostname, cfg.Credentials, cfg.ProvidersSize, cfg.TrustedProviders, cfg.TrustedProviders)
+	} else {
+		sources = socket.NewTrustedAgregator(ctx, cfg.Hostname, cfg.Credentials, cfg.ProvidersSize, cfg.TrustedProviders, cfg.TrustedProviders, existingConnection)
+	}
 	// connect sources to blockchain engine
 	SocialProtocolBlockListener(ctx, cfg.ParentProtocolCode, sources, engine.block, engine.commit)
 

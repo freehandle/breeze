@@ -2,6 +2,7 @@ package social
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"log/slog"
 
@@ -67,6 +68,7 @@ func (b *breezeListener) Apply(msg []byte) {
 	switch msg[0] {
 	case messages.MsgSealedBlock:
 		sealed := chain.ParseSealedBlock(msg[1:])
+		fmt.Println("sealed", sealed.Header.Epoch)
 		if sealed != nil {
 			social := BreezeSealedBlockToSocialBlock(sealed)
 			if social == nil {
@@ -78,6 +80,7 @@ func (b *breezeListener) Apply(msg []byte) {
 	case messages.MsgCommit:
 		epoch, hash, bytes := messages.ParseEpochAndHash(msg[1:])
 		commit := chain.ParseBlockCommit(bytes)
+		fmt.Println("commit", epoch)
 		if commit == nil {
 			return
 		}
@@ -94,6 +97,7 @@ func (b *breezeListener) Apply(msg []byte) {
 
 	case messages.MsgCommittedBlock:
 		committed := chain.ParseCommitBlock(msg[1:])
+		fmt.Println("committed", committed.Header.Epoch)
 		if committed != nil {
 			social := BreezeComiittedBlockToSocialBlock(committed)
 			if social == nil {
@@ -139,6 +143,7 @@ func SocialProtocolBlockListener(ctx context.Context, parentProtocolCode uint32,
 	go func() {
 		for {
 			data, err := sources.Read()
+			fmt.Println("data", data[0:10], err)
 			if err != nil {
 				log.Printf("SocialProtocolBlockListener: could not read from connection: %v", err)
 				listener.Close()

@@ -222,6 +222,20 @@ func PeersToTokenAddr(peers []Peer) []socket.TokenAddr {
 	return tk
 }
 
+func PeersToTokenAddrWithPort(peers []Peer, port int) []socket.TokenAddr {
+	tk := make([]socket.TokenAddr, 0)
+	for _, peer := range peers {
+		token := crypto.TokenFromString(peer.Token)
+		if token != crypto.ZeroToken {
+			tk = append(tk, socket.TokenAddr{
+				Token: token,
+				Addr:  fmt.Sprintf("%s:%d", peer.Address, port),
+			})
+		}
+	}
+	return tk
+}
+
 func SwellConfigFromConfig(cfg *NetworkConfig, networkID string) swell.SwellNetworkConfiguration {
 
 	swell := swell.SwellNetworkConfiguration{
