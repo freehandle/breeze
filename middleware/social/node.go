@@ -102,6 +102,8 @@ func launchNodeFromStateWithConnection[M Merger[M], B Blocker[M]](ctx context.Co
 
 }
 
+// Launch a new social protocol validator service that syncs state with one of
+// trusted peers.
 func LaunchSyncNode[M Merger[M], B Blocker[M]](ctx context.Context, cfg Configuration, peers []socket.TokenAddr, newState StateFromBytes[M, B]) chan error {
 	conn, checksum, clock, err := SyncSocialState[M, B](cfg, peers, newState)
 	if err != nil {
