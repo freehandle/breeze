@@ -208,6 +208,14 @@ func FirewallToValidConnections(f FirewallConfig) *socket.AcceptValidConnections
 	return socket.NewValidConnections(tokens, f.Open)
 }
 
+func PeerToTokenAddr(peer Peer) socket.TokenAddr {
+	token := crypto.TokenFromString(peer.Token)
+	return socket.TokenAddr{
+		Token: token,
+		Addr:  peer.Address,
+	}
+}
+
 func PeersToTokenAddr(peers []Peer) []socket.TokenAddr {
 	tk := make([]socket.TokenAddr, 0)
 	for _, peer := range peers {

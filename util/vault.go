@@ -10,6 +10,8 @@ import (
 	"github.com/freehandle/breeze/crypto"
 )
 
+// SecureVault is a file that can persists data in an encrypted format protected
+// by a pass phrase.
 type SecureVault struct {
 	SecretKey crypto.PrivateKey
 	Entries   [][]byte
@@ -18,6 +20,9 @@ type SecureVault struct {
 }
 
 func (s *SecureVault) NewEntry(data []byte) error {
+	if len(data) == 0 {
+		return nil
+	}
 	sealed := s.cipher.Seal(data)
 	s.Entries = append(s.Entries, data)
 	bytes := make([]byte, 0)

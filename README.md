@@ -376,7 +376,7 @@ Like blow and beat, after running echo with the configuration file, kite must be
 
 [Synergy](https://github.com/freehandle/synergy) protocol was designed as a digital framework for collaboration and collective construction. It runs seamlessly on top of the Breeze protocol working with  
 
-[Handles](https://github.com/freehandle/axe) social protocol, which provides primitives for identity and stage management.
+[Handles](https://github.com/freehandle/handles) social protocol, which provides primitives for identity and stage management.
 
 Breeze is, itself, an ongoing project inside the Synergy protocol. To collaborate with building Breeze, you are welcome to join [Synergy's Breeze Collective](https://freehandle.org/synergy/collective/synergy). 
 
