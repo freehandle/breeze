@@ -26,4 +26,8 @@ type Stateful[T Merger[T], B Blocker[T]] interface {
 	Serialize() []byte
 }
 
+type Serializer interface {
+	Serialize() []byte
+}
+
 type StateFromBytes[T Merger[T], B Blocker[T]] func([]byte) (Stateful[T, B], bool)

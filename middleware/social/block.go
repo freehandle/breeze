@@ -14,7 +14,7 @@ const (
 	Committed
 )
 
-// Ancestor is a signed hash associateds to a protocol code. A list of ancestors
+// Ancestor is a signed hash associated to a protocol code. A list of ancestors
 // is used to provide pedigree for a block.
 // Signatures for both the seal and hash are required.
 type Ancestor struct {
