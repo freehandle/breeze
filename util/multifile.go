@@ -2,6 +2,7 @@ package util
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"sort"
@@ -13,83 +14,173 @@ import (
 const MAX_FILE_SIZE = 1 << 30
 
 type ReadAppendMutiFileStore struct {
-	mu sync.RWMutex
-	totalsize int64
-	filesizes []int64
-	files     []*os.File
-	readOffset  int
+	name        string
+	path        string
+	mu          sync.Mutex
+	totalsize   int64
+	filesizes   []int64
+	files       []*os.File
+	writeOffset int64
+	readOffset  int64
 	readCurrent int
 }
 
-func (r *ReadAppendMutiFileStore) ReadFromFile(offset, nbytes int64, file int) ([]bytes, error) {
-	r.mu.RLock()
-	if file == len(r.files) - 1 {
-		bytes := make([]byte, nbytes)
-		rbytes, err := r.files[file].ReadAt(bytes, offset)
-		r.mu.Unlock()
-		if rbytes < int(nbytes) {
-			return bytes[:rbytes], io.EOF
-		}
-		return bytes[:rbytes], nil
-	}
-	r.mu.RUnlock()
-	bytes := make([]byte, nbytes)
-	nbytes, err := r.files[len(r.files)-1].ReadAt(bytes, offset)
-	return bytes[:nbytes], nil
+type plan struct {
+	file   int
+	offset int64
+	nbytes int64
+	total  int64
 }
 
-func (r *ReadAppendMutiFileStore) Write(p []byte) (n int, err error) {
-	r.mu.WLock()
-	if r.readOffset + len(p) >= r.filesizes[r.readCurrent] {
-		r.readOffset = 0
-		r.readCurrent++
+func (r *ReadAppendMutiFileStore) prepareReadPlan(nbytes int64) []plan {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	remaining := nbytes
+	file := r.readCurrent
+	offset := r.readOffset
+	strategy := make([]plan, 0)
+	for {
+		if remaining <= r.filesizes[file]-offset {
+			p := plan{file, offset, remaining, nbytes}
+			strategy = append(strategy, p)
+			return strategy
+		} else {
+			bytesToRead := r.filesizes[file] - offset
+			p := plan{file, offset, bytesToRead, nbytes - remaining + bytesToRead}
+			strategy = append(strategy, p)
+			remaining -= bytesToRead
+			if file == len(r.files)-1 {
+				return strategy
+			}
+			file++
+			offset = 0
+		}
 	}
+}
+
+func (r *ReadAppendMutiFileStore) Read(p []byte) (int, error) {
+	plan := r.prepareReadPlan(int64(len(p)))
+	for _, plan := range plan {
+		_, err := r.files[plan.file].ReadAt(p[plan.total-plan.nbytes:plan.total], plan.offset)
+		if err != nil && err != io.EOF {
+			return 0, err
+		}
+	}
+	last := plan[len(plan)-1]
+	r.readCurrent = last.file
+	r.readOffset = last.offset + last.nbytes
+	total := last.total
+	if total < int64(len(p)) {
+		return int(total), io.EOF
+	}
+	return int(total), nil
+}
+
+func (r *ReadAppendMutiFileStore) createfile() error {
+	file, err := os.OpenFile(fmt.Sprintf("%s%d.bin", r.name, len(r.files)), os.O_CREATE|os.O_RDWR, 0666)
+	if err != nil {
+		return err
+	}
+	r.files = append(r.files, file)
+	r.filesizes = append(r.filesizes, 0)
+	r.writeOffset = 0
+	return nil
+}
+
+func (r *ReadAppendMutiFileStore) Write(p []byte) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	file := r.files[len(r.files)-1]
+
+	n, err := file.WriteAt(p, r.writeOffset)
+	if err != nil {
+		return n, err
+	}
+	wbytes := int64(n)
+	r.writeOffset += wbytes
+	r.totalsize += wbytes
+	r.files[len(r.files)-1].WriteAt(p, r.filesizes[len(r.files)-1])
 	n, err = r.files[r.readCurrent].WriteAt(p, r.readOffset)
-	r.readOffset += n
-	r.totalsize += int64(n)
-	r.mu.WUnlock()
+	if r.writeOffset >= MAX_FILE_SIZE {
+		r.createfile()
+	}
 	return n, err
 }
 
-func (r *ReadAppendMutiFileStore) Read(p []byte) (n int, err error) {
-	
-	currentSize = r.filesizes[r.current]
-	if r.readOffset + len(p) >= currentSize {
-
+func (r *ReadAppendMutiFileStore) Close() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, file := range r.files {
+		if file != nil {
+			file.Close()
+		}
 	}
+	return nil
+}
 
-	
-	
-	n, err = r.files[r.current].Read(p)
-	if
-
-func OpenMultiFileStore(path, name string) (*MutiFileStore, error) {
+func OpenMultiFileStore(path, name string) (*ReadAppendMutiFileStore, error) {
 	dirfiles, err := os.ReadDir(path)
 	if err != nil {
 		log.Fatal(err)
 	}
 	numbers := make(sort.IntSlice, 0)
+	stats := make(map[int]int64)
+	totalSize := int64(0)
 	for _, file := range dirfiles {
 		if strings.HasPrefix(file.Name(), name) && strings.HasSuffix(file.Name(), ".bin") {
 			if number, err := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(file.Name(), name), ".bin")); err != nil {
 				numbers = append(numbers, number)
+				if info, err := file.Info(); err != nil {
+					return nil, err
+				} else {
+					size := info.Size()
+					stats[number] = size
+					totalSize += size
+				}
 			}
 		}
 	}
+	if len(numbers) == 0 {
+		file, err := os.OpenFile(fmt.Sprintf("%s/%s0.bin", path, name), os.O_CREATE|os.O_RDWR, 0666)
+		if err != nil {
+			return nil, err
+		}
+		store := &ReadAppendMutiFileStore{
+			mu:        sync.Mutex{},
+			name:      name,
+			path:      path,
+			filesizes: []int64{0},
+			files:     []*os.File{file},
+		}
+		return store, nil
+	}
+
 	sort.Sort(numbers)
 	for n := 0; n < len(numbers); n++ {
 		if numbers[n] != n {
 			return nil, fmt.Errorf("missing file %s%d.bin", name, n)
 		}
 	}
-	openfiles := make([]*os.File, len(numbers))
+
+	store := &ReadAppendMutiFileStore{
+		mu:          sync.Mutex{},
+		name:        name,
+		path:        path,
+		totalsize:   totalSize,
+		filesizes:   make([]int64, len(numbers)),
+		files:       make([]*os.File, len(numbers)),
+		writeOffset: stats[len(numbers)-1],
+	}
+
 	for n := 0; n < len(numbers)-1; n++ {
 		filePath := fmt.Sprintf("%s/%s%d.bin", path, name, n)
-		openfiles[n], err = os.Open(filePath)
+		store.files[n], err = os.Open(filePath)
 		if err != nil {
+			store.Close()
 			return nil, err
 		}
+		store.filesizes[n] = stats[n]
 	}
-	openfiles[n], err = os.Open(filePath)
-
+	return store, nil
 }
