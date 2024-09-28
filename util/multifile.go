@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -119,8 +120,8 @@ func (r *ReadAppendMutiFileStore) Close() error {
 	return nil
 }
 
-func OpenMultiFileStore(path, name string) (*ReadAppendMutiFileStore, error) {
-	dirfiles, err := os.ReadDir(path)
+func OpenMultiFileStore(dbpath, name string) (*ReadAppendMutiFileStore, error) {
+	dirfiles, err := os.ReadDir(dbpath)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -142,14 +143,15 @@ func OpenMultiFileStore(path, name string) (*ReadAppendMutiFileStore, error) {
 		}
 	}
 	if len(numbers) == 0 {
-		file, err := os.OpenFile(fmt.Sprintf("%s/%s0.bin", path, name), os.O_CREATE|os.O_RDWR, 0666)
+		filename := path.Join(dbpath, fmt.Sprintf("%s0.bin", name))
+		file, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR, 0666)
 		if err != nil {
 			return nil, err
 		}
 		store := &ReadAppendMutiFileStore{
 			mu:        sync.Mutex{},
 			name:      name,
-			path:      path,
+			path:      dbpath,
 			filesizes: []int64{0},
 			files:     []*os.File{file},
 		}
@@ -166,16 +168,16 @@ func OpenMultiFileStore(path, name string) (*ReadAppendMutiFileStore, error) {
 	store := &ReadAppendMutiFileStore{
 		mu:          sync.Mutex{},
 		name:        name,
-		path:        path,
+		path:        dbpath,
 		totalsize:   totalSize,
 		filesizes:   make([]int64, len(numbers)),
 		files:       make([]*os.File, len(numbers)),
 		writeOffset: stats[len(numbers)-1],
 	}
 
-	for n := 0; n < len(numbers)-1; n++ {
-		filePath := fmt.Sprintf("%s/%s%d.bin", path, name, n)
-		store.files[n], err = os.Open(filePath)
+	for n := 0; n < len(numbers); n++ {
+		filename := path.Join(dbpath, fmt.Sprintf("%s%d.bin", name, n))
+		store.files[n], err = os.Open(filename)
 		if err != nil {
 			store.Close()
 			return nil, err
