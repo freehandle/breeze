@@ -93,7 +93,6 @@ func (r *ReadAppendMutiFileStore) Write(p []byte) (int, error) {
 	defer r.mu.Unlock()
 
 	file := r.files[len(r.files)-1]
-
 	n, err := file.WriteAt(p, r.writeOffset)
 	if err != nil {
 		return n, err
@@ -101,8 +100,6 @@ func (r *ReadAppendMutiFileStore) Write(p []byte) (int, error) {
 	wbytes := int64(n)
 	r.writeOffset += wbytes
 	r.totalsize += wbytes
-	r.files[len(r.files)-1].WriteAt(p, r.filesizes[len(r.files)-1])
-	n, err = r.files[r.readCurrent].WriteAt(p, r.readOffset)
 	if r.writeOffset >= MAX_FILE_SIZE {
 		r.createfile()
 	}
