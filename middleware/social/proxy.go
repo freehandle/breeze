@@ -6,29 +6,19 @@ import (
 	"io"
 	"time"
 
-	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/util"
 )
 
-type LocalChainConfig[M Merger[M], B Blocker[M]] struct {
-	Credentials  crypto.PrivateKey
-	ProtocolCode uint32
-	Interval     time.Duration
-	Listeners    []chan []byte
-	Genesis      Stateful[M, B]
-}
-
 type LocalBlockChain[M Merger[M], B Blocker[M]] struct {
-	Credentials  crypto.PrivateKey
-	ProtocolCode uint32
-	Interval     time.Duration
-	Receiver     chan []byte
-	Listeners    []chan []byte
-	IO           io.WriteCloser
-	State        Stateful[M, B]
-	Epoch        uint64
+	Interval  time.Duration
+	Receiver  chan []byte
+	Listeners []chan []byte
+	IO        io.WriteCloser
+	State     Stateful[M, B]
+	Epoch     uint64
 }
 
+// Very simple chain implementation for local storage
 func (local *LocalBlockChain[M, B]) PeristActions(actions [][]byte) error {
 	bytes := make([]byte, 0)
 	util.PutUint64(local.Epoch, &bytes)
@@ -43,25 +33,8 @@ func (local *LocalBlockChain[M, B]) PeristActions(actions [][]byte) error {
 	return nil
 }
 
-func OpenChain[M Merger[M], B Blocker[M]](IO io.ReadWriteCloser, cfg *LocalChainConfig[M, B]) (*LocalBlockChain[M, B], error) {
-	state, epoch, err := StateFromGenesis(cfg.Genesis, IO, cfg.Listeners)
-	if err != nil {
-		return nil, err
-	}
-	local := &LocalBlockChain[M, B]{
-		Credentials:  cfg.Credentials,
-		ProtocolCode: cfg.ProtocolCode,
-		Interval:     cfg.Interval,
-		Receiver:     make(chan []byte),
-		Listeners:    cfg.Listeners,
-		IO:           IO,
-		State:        state,
-		Epoch:        epoch,
-	}
-	return local, nil
-}
-
-func StateFromGenesis[T Merger[T], B Blocker[T]](genesis Stateful[T, B], source io.Reader, listeners []chan []byte) (Stateful[T, B], uint64, error) {
+func (local *LocalBlockChain[M, B]) LoadState(genesis Stateful[M, B], source io.Reader, listeners []chan []byte) error {
+	local.State = genesis
 	validator := genesis.Validator()
 	buffer := make([]byte, 1<<20)
 	n := 0
@@ -69,18 +42,18 @@ func StateFromGenesis[T Merger[T], B Blocker[T]](genesis Stateful[T, B], source 
 		remaning := make([]byte, 1<<20-n)
 		nbytes, err := source.Read(remaning)
 		if err != nil && err != io.EOF {
-			return nil, 0, err
+			return err
 		}
 		data := append(buffer[n:], remaning[:nbytes]...)
 		n := 0
-		epoch, n := util.ParseUint64(data, 0)
+		local.Epoch, n = util.ParseUint64(data, 0)
 		count, n := util.ParseUint32(data, n)
 		actions := make([][]byte, count)
 		for i := 0; i < int(count); i++ {
 			actions[i], n = util.ParseLargeByteArray(data, n)
 			ok := validator.Validate(actions[i])
 			if !ok {
-				return nil, 0, fmt.Errorf("invalid action at position %d of block %d", i, epoch)
+				return fmt.Errorf("invalid action at position %d of block %d", i, local.Epoch)
 			}
 			if len(listeners) > 0 {
 				for _, listener := range listeners {
@@ -89,11 +62,11 @@ func StateFromGenesis[T Merger[T], B Blocker[T]](genesis Stateful[T, B], source 
 			}
 		}
 		if n > len(data) {
-			return nil, 0, fmt.Errorf("invalid block at epoch %d", epoch)
+			return fmt.Errorf("invalid block at epoch %d", local.Epoch)
 		}
-		genesis.Incorporate(validator.Mutations())
+		local.State.Incorporate(validator.Mutations())
 		if err == io.EOF {
-			return genesis, epoch, nil
+			return nil
 		}
 	}
 }
