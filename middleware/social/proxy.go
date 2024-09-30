@@ -93,10 +93,13 @@ func (local *LocalBlockChain[M, B]) Start(ctx context.Context) chan error {
 				local.Epoch += 1
 			case msg := <-local.Receiver:
 				if validator.Validate(msg) {
+					fmt.Println("valid message")
 					actions = append(actions, msg)
 					for _, listener := range local.Listeners {
 						listener <- msg
 					}
+				} else {
+					fmt.Println("invalid message")
 				}
 			}
 		}

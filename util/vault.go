@@ -1,6 +1,7 @@
 package util
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -62,6 +63,14 @@ func NewSecureVault(password []byte, fileName string) (*SecureVault, error) {
 		return nil, fmt.Errorf("could not write header to secure vault file: %v", err)
 	}
 	return &vault, nil
+}
+
+func OpenOrCreateVaultFromPassword(password []byte, fileName string) (*SecureVault, error) {
+	_, err := os.Stat(fileName)
+	if errors.Is(err, os.ErrNotExist) {
+		return NewSecureVault(password, fileName)
+	}
+	return OpenVaultFromPassword(password, fileName)
 }
 
 func OpenVaultFromPassword(password []byte, fileName string) (*SecureVault, error) {
