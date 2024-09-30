@@ -6,6 +6,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/freehandle/breeze/consensus/messages"
 	"github.com/freehandle/breeze/util"
 )
 
@@ -91,15 +92,20 @@ func (local *LocalBlockChain[M, B]) Start(ctx context.Context) chan error {
 				local.PeristActions(actions)
 				actions = make([][]byte, 0)
 				local.Epoch += 1
+				bytes := []byte{0}
+				util.PutUint64(local.Epoch, &bytes)
+				for _, listener := range local.Listeners {
+					listener <- bytes
+				}
 			case msg := <-local.Receiver:
-				if validator.Validate(msg) {
-					fmt.Println("valid message")
+				if len(msg) == 0 || msg[0] != messages.MsgAction {
+					continue
+				}
+				if validator.Validate(msg[1:]) {
 					actions = append(actions, msg)
 					for _, listener := range local.Listeners {
 						listener <- msg
 					}
-				} else {
-					fmt.Println("invalid message")
 				}
 			}
 		}
