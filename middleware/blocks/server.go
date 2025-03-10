@@ -186,7 +186,7 @@ func BreezeListener(ctx context.Context, cfg Config) (*swell.StandByNode, error)
 			Addr:  fmt.Sprintf("%s:%d", source.Addr, cfg.BlockRelayPort),
 			Token: source.Token,
 		}
-		if err := swell.FullSyncValidatorNode(ctx, validatorCfg, service, standBy); err == nil {
+		if err := swell.FullSyncReplicaNode(ctx, validatorCfg, service, standBy); err == nil {
 			connectedToNetwork = true
 			break
 		} else {
