@@ -127,7 +127,7 @@ func OpenMultiFileStore(dbpath, name string) (*ReadAppendMutiFileStore, error) {
 	totalSize := int64(0)
 	for _, file := range dirfiles {
 		if strings.HasPrefix(file.Name(), name) && strings.HasSuffix(file.Name(), ".bin") {
-			if number, err := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(file.Name(), name), ".bin")); err != nil {
+			if number, err := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(file.Name(), name), ".bin")); err == nil {
 				numbers = append(numbers, number)
 				if info, err := file.Info(); err != nil {
 					return nil, err
@@ -145,6 +145,7 @@ func OpenMultiFileStore(dbpath, name string) (*ReadAppendMutiFileStore, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		store := &ReadAppendMutiFileStore{
 			mu:        sync.Mutex{},
 			name:      name,

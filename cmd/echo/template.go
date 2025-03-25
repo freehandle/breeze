@@ -20,7 +20,7 @@ const blocklist = `
 		<tobdy>
 			{{range .Blocks}}
 			<tr>
-				<td> <a href="/block/{{.Hash}}">{{.Epoch}}</a> </td>
+				<td> <a href="./block/{{.Hash}}">{{.Epoch}}</a> </td>
 				<td> {{.Published}} </td>
 				<td> {{.Actions}} </td>
 			</tr>
@@ -51,7 +51,7 @@ const blockdetail = `
 		<tobdy>
 			{{range .Blocks}}
 			<tr>
-				<td> <a href="/block/{{.Hash}}">{{.Epoch}}</a> </td>
+				<td> <a href="./block/{{.Hash}}">{{.Epoch}}</a> </td>
 				<td> {{.Published}} </td>
 				<td> {{.Actions}} </td>
 			</tr>

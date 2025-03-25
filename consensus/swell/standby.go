@@ -9,6 +9,9 @@ import (
 	"github.com/freehandle/breeze/util"
 )
 
+// A StandByNode is a node that is not part of the consensus committee but
+// is listening to the network to keep in sync with the blockchain and the
+// netywork topology.
 type StandByNode struct {
 	hostname   string
 	Blockchain *chain.Blockchain
@@ -22,7 +25,7 @@ type WindowWithWorker struct {
 	worker     chan *chain.SealedBlock
 }
 
-func RunReplicaNode(w *Window, conn *socket.SignedConnection) *StandByNode {
+func StartReplicaEngine(w *Window, conn *socket.SignedConnection) *StandByNode {
 	if w == nil {
 		slog.Error("RunReplicaNode: called with net window")
 		return nil
@@ -56,7 +59,7 @@ func RunReplicaNode(w *Window, conn *socket.SignedConnection) *StandByNode {
 		{
 			window:     w,
 			validators: validators,
-			worker:     RunReplicaWindow(newCtx, w, jobs),
+			worker:     ReplicaNodeWindowEngine(newCtx, w, jobs),
 		},
 	}
 
@@ -76,7 +79,7 @@ func RunReplicaNode(w *Window, conn *socket.SignedConnection) *StandByNode {
 				worker := &WindowWithWorker{
 					window:     next.window,
 					validators: next.validators,
-					worker:     RunReplicaWindow(newCtx, next.window, jobs),
+					worker:     ReplicaNodeWindowEngine(newCtx, next.window, jobs),
 				}
 				activeWindows = append(activeWindows, worker)
 				slog.Info("RunReplicaNode: new window received", "start", next.window.Start, "end", next.window.End)
@@ -116,7 +119,7 @@ func RunReplicaNode(w *Window, conn *socket.SignedConnection) *StandByNode {
 	return node
 }
 
-func RunReplicaWindow(ctx context.Context, w *Window, finished chan uint64) chan *chain.SealedBlock {
+func ReplicaNodeWindowEngine(ctx context.Context, w *Window, finished chan uint64) chan *chain.SealedBlock {
 	sealed := make(chan *chain.SealedBlock)
 	go func() {
 		for {

@@ -37,23 +37,32 @@ func (local *LocalBlockChain[M, B]) PeristActions(actions [][]byte) error {
 func (local *LocalBlockChain[M, B]) LoadState(genesis Stateful[M, B], source io.Reader, listeners []chan []byte) error {
 	local.State = genesis
 	validator := genesis.Validator()
-	buffer := make([]byte, 1<<20)
+	data := make([]byte, 0, 1<<20)
 	n := 0
+	count := uint32(0)
 	for {
-		remaning := make([]byte, 1<<20-n)
-		nbytes, err := source.Read(remaning)
+		buffer := make([]byte, (1<<20)-n)
+		nbytes, err := source.Read(buffer)
 		if err != nil && err != io.EOF {
 			return err
 		}
-		data := append(buffer[n:], remaning[:nbytes]...)
-		n := 0
+		if n > len(data)+nbytes {
+			return fmt.Errorf("buffer overflow")
+		}
+		if n == len(data)+nbytes {
+			local.State.Incorporate(validator.Mutations())
+			return nil
+		}
+		data = append(data[n:], buffer[:nbytes]...)
+		n = 0
 		local.Epoch, n = util.ParseUint64(data, 0)
-		fmt.Printf("Loading epoch %d\n", local.Epoch)
-		count, n := util.ParseUint32(data, n)
+		//fmt.Printf("Loading epoch %d\n", local.Epoch)
+		count, n = util.ParseUint32(data, n)
 		actions := make([][]byte, count)
+		//fmt.Printf("Loading %v actions %v\n", count, n)
 		for i := 0; i < int(count); i++ {
 			actions[i], n = util.ParseLargeByteArray(data, n)
-			ok := validator.Validate(actions[i])
+			ok := validator.Validate(actions[i][1:])
 			if !ok {
 				return fmt.Errorf("invalid action at position %d of block %d", i, local.Epoch)
 			}
@@ -62,13 +71,6 @@ func (local *LocalBlockChain[M, B]) LoadState(genesis Stateful[M, B], source io.
 					listener <- actions[i]
 				}
 			}
-		}
-		if n > len(data) {
-			return fmt.Errorf("invalid block at epoch %d", local.Epoch)
-		}
-		local.State.Incorporate(validator.Mutations())
-		if err == io.EOF {
-			return nil
 		}
 	}
 }
@@ -103,7 +105,9 @@ func (local *LocalBlockChain[M, B]) Start(ctx context.Context) chan error {
 					continue
 				}
 				if validator.Validate(msg[1:]) {
-					actions = append(actions, msg)
+					copied := make([]byte, len(msg))
+					copy(copied, msg)
+					actions = append(actions, copied)
 					for _, listener := range local.Listeners {
 						listener <- msg
 					}

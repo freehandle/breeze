@@ -146,6 +146,7 @@ func (b *Blockchain) TimestampBlock(epoch uint64) time.Time {
 // provided epoch will start. It is calculated from the last clock
 func (b *Blockchain) Timer(epoch uint64) *time.Timer {
 	delta := time.Until(b.TimestampBlock(epoch))
+	slog.Info("Blockchain: timestamp block", "epoch", epoch, "delta", delta)
 	return time.NewTimer(delta)
 }
 
@@ -180,6 +181,29 @@ func (c *Blockchain) RecentAfter(epoch uint64) []*CommitBlock {
 		}
 	}
 	return recent
+}
+
+func (c *Blockchain) BlockBuilder(epoch uint64) (*BlockBuilder, error) {
+	if epoch <= c.LastCommitEpoch {
+		return nil, errors.New("Blockchain: NextBlock: epoch already commited")
+	}
+	for _, sealed := range c.SealedBlocks {
+		if sealed.Header.Epoch == epoch {
+			return nil, errors.New("Blockchain: NextBlock: epoch already sealed")
+		}
+	}
+	return &BlockBuilder{
+		Header: BlockHeader{
+			NetworkHash:    c.NetworkHash,
+			Epoch:          epoch,
+			CheckPoint:     c.LastCommitEpoch,
+			CheckpointHash: c.LastCommitHash,
+			Proposer:       c.Credentials.PublicKey(),
+			ProposedAt:     time.Now(),
+		},
+		Actions:   NewActionArray(),
+		Validator: c.CommitState.Validator(state.NewMutations(epoch), epoch),
+	}, nil
 }
 
 // NextBlock returns a block header for the next block to be proposed. It

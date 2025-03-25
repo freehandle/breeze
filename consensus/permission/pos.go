@@ -1,19 +1,3 @@
-/*
-Permissions implement a permission interface to determine if a node is
-allowed to participate in consensus and punish nodes that violate the
-consensus rules.
-
-The ProofOfStake permission implementation requires a minimum amount of tokens
-staged on a deposit contract to be allowed to participate in consensus. The
-balance deposited is checked against the state of the chain at the time of
-checksum window creation. The ProofOfStake implementation punishes nodes that
-violate the consensus rules by slashing their deposit.
-
-The ProofOfAuthority permission implementation requires a list of authorized
-tokens to be allowed to participate in consensus. The ProofOfAuthority does not
-contemplate punishment other than be automatically removed from the list of
-authorized tokens.
-*/
 package permission
 
 import (
@@ -66,75 +50,6 @@ func (pos *ProofOfStake) DeterminePool(chain *chain.Blockchain, candidates []cry
 		_, deposit := chain.Checksum.State.Deposits.Balance(token)
 		if deposit >= pos.MinimumStage {
 			validated[token] = int(deposit / pos.MinimumStage)
-		}
-	}
-	return validated
-}
-
-type Permissionless struct{}
-
-func (p Permissionless) Punish(duplicates *bft.Duplicate, weights map[crypto.Token]int) map[crypto.Token]uint64 {
-	return nil
-}
-
-func (p Permissionless) DeterminePool(chain *chain.Blockchain, candidates []crypto.Token) map[crypto.Token]int {
-	validated := make(map[crypto.Token]int)
-	for _, token := range candidates {
-		validated[token] = 1
-	}
-	return validated
-}
-
-// NewProofOfStake returns a new empty ProofOfStake.
-func NewProofOfAuthority(tokens ...crypto.Token) *ProofOfAuthority {
-	return &ProofOfAuthority{
-		Authorized: tokens,
-	}
-}
-
-// Proof of authority implements a PoA permission interface.
-type ProofOfAuthority struct {
-	Authorized []crypto.Token
-}
-
-func (poa *ProofOfAuthority) Authorize(token crypto.Token) {
-	for _, t := range poa.Authorized {
-		if t.Equal(token) {
-			return
-		}
-	}
-	poa.Authorized = append(poa.Authorized, token)
-}
-
-// Cancel removes a token from the list of authorized tokens.
-func (poa *ProofOfAuthority) Cancel(token crypto.Token) {
-	for i, t := range poa.Authorized {
-		if t.Equal(token) {
-			poa.Authorized = append(poa.Authorized[:i], poa.Authorized[i+1:]...)
-			return
-		}
-	}
-}
-
-// Punish returns an empty map of punishments and cancel the autorization of the
-// violators to participate in consensus.
-func (poa *ProofOfAuthority) Punish(duplicates *bft.Duplicate, weights map[crypto.Token]int) map[crypto.Token]uint64 {
-	violations := Violations(duplicates)
-	punishments := make(map[crypto.Token]uint64)
-	for token := range violations {
-		poa.Cancel(token)
-	}
-	return punishments
-}
-
-// DeterminePool returns a map of authorized tokens and their equal weight of 1.
-func (poa *ProofOfAuthority) DeterminePool(chain *chain.Blockchain, candidates []crypto.Token) map[crypto.Token]int {
-	validated := make(map[crypto.Token]int)
-	for _, candidate := range candidates {
-		for _, token := range poa.Authorized {
-			if candidate.Equal(token) {
-				validated[token] = 1
-			}
 		}
 	}
 	return validated

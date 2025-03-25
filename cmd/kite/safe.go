@@ -38,7 +38,7 @@ func ParseDefault(data []byte) (string, byte) {
 	if position != len(data) {
 		return "", 0
 	}
-	fmt.Println(node, scope)
+	//fmt.Println(node, scope)
 	return node, scope
 }
 

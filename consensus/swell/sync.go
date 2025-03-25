@@ -14,15 +14,44 @@ import (
 	"github.com/freehandle/breeze/util"
 )
 
+func FullSyncReplicaNode(ctx context.Context, config ValidatorConfig, sync socket.TokenAddr, synced chan *StandByNode) error {
+	go func() {
+		window, conn, err := FullSync(ctx, config, sync)
+		if err != nil {
+			return
+		}
+		if synced != nil {
+			synced <- StartReplicaEngine(window, conn)
+		}
+	}()
+	return nil
+}
+
+func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync socket.TokenAddr, synced chan *SwellNode) error {
+	go func() {
+		window, conn, err := FullSync(ctx, config, sync)
+		if err != nil {
+			return
+		}
+		go window.Node.ServeAdmin(ctx)
+		//RunActionsGateway(ctx, config.Relay.ActionGateway, node.actions)
+		window.Node.cancel = StartNonValidatorEngine(window, conn, true)
+		if synced != nil {
+			synced <- window.Node
+		}
+	}()
+	return nil
+}
+
 // FullSyncValidatorNode tries to gather information from a given validator to
 // form a new non-validating node. This is used to bootstrap a new node from
 // scratch. A standy node just keep in sync with the network and cannot be a
 // candidate to participate in consensus. Standby nodes have no relay and no
 // admin interface.
-func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync socket.TokenAddr, standby chan *StandByNode) error {
+func FullSync(ctx context.Context, config ValidatorConfig, sync socket.TokenAddr) (*Window, *socket.SignedConnection, error) {
 	conn, err := socket.Dial(config.Hostname, sync.Addr, config.Credentials, sync.Token)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	bytes := []byte{messages.MsgSyncRequest}
 	util.PutUint64(0, &bytes)
@@ -33,15 +62,15 @@ func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync soc
 
 	msg, err := conn.Read()
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	if len(msg) < 1 || msg[0] != messages.MsgCommittee {
-		return errors.New("invalid committee message type")
+		return nil, nil, errors.New("invalid committee message type")
 	}
 	order, validators := ParseCommitee(msg[1:])
 	if len(order) == 0 || len(validators) == 0 {
 		fmt.Println(order, validators)
-		return errors.New("invalid committee message")
+		return nil, nil, errors.New("invalid committee message")
 	}
 	weights := make(map[crypto.Token]int)
 	for _, token := range order {
@@ -60,10 +89,10 @@ func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync soc
 
 	msg, err = conn.Read()
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	if len(msg) < 8 || msg[0] != messages.MsgClockSync {
-		return errors.New("invalid clock sync message")
+		return nil, nil, errors.New("invalid clock sync message")
 	}
 	position := 1
 	clock.Epoch, position = util.ParseUint64(msg, position)
@@ -71,7 +100,7 @@ func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync soc
 
 	checksum, err := syncChecksum(conn, config.WalletPath)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 
 	node := &SwellNode{
@@ -91,7 +120,7 @@ func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync soc
 
 	windowDuration := uint64(config.SwellConfig.ChecksumWindow)
 	windowStart := windowDuration*(checksum.Epoch/windowDuration) + 1
-	window := Window{
+	window := &Window{
 		ctx:         ctx,
 		Start:       windowStart,
 		End:         windowStart + windowDuration - 1,
@@ -101,15 +130,7 @@ func FullSyncValidatorNode(ctx context.Context, config ValidatorConfig, sync soc
 		unpublished: make([]*chain.ChecksumStatement, 0),
 		published:   make([]*chain.ChecksumStatement, 0),
 	}
-	if standby == nil {
-		go node.ServeAdmin(ctx)
-		//RunActionsGateway(ctx, config.Relay.ActionGateway, node.actions)
-		RunNonValidatorNode(&window, conn, true)
-	} else {
-		standby <- RunReplicaNode(&window, conn)
-		fmt.Println(9)
-	}
-	return nil
+	return window, conn, nil
 }
 
 // syncCheksum is called by FullSyncValidatorNode to gather the checksum from

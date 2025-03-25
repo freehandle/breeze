@@ -108,6 +108,7 @@ func main() {
 			TrustedGateway: TokenAddrArrayFromPeeers(cfg.TrustedNodes),
 		}
 		swell.NewGenesisNode(ctx, nodeSecret, validatorConfig)
+		<-ctx.Done()
 		return
 	} else if len(os.Args) < 5 {
 		fmt.Println(usage)
