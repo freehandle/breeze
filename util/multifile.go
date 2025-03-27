@@ -141,7 +141,7 @@ func OpenMultiFileStore(dbpath, name string) (*ReadAppendMutiFileStore, error) {
 	}
 	if len(numbers) == 0 {
 		filename := path.Join(dbpath, fmt.Sprintf("%s0.bin", name))
-		file, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR, 0666)
+		file, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0666)
 		if err != nil {
 			return nil, err
 		}
@@ -175,7 +175,7 @@ func OpenMultiFileStore(dbpath, name string) (*ReadAppendMutiFileStore, error) {
 
 	for n := 0; n < len(numbers); n++ {
 		filename := path.Join(dbpath, fmt.Sprintf("%s%d.bin", name, n))
-		store.files[n], err = os.Open(filename)
+		store.files[n], err = os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0666)
 		if err != nil {
 			store.Close()
 			return nil, err

@@ -56,10 +56,10 @@ func (local *LocalBlockChain[M, B]) LoadState(genesis Stateful[M, B], source io.
 		data = append(data[n:], buffer[:nbytes]...)
 		n = 0
 		local.Epoch, n = util.ParseUint64(data, 0)
-		//fmt.Printf("Loading epoch %d\n", local.Epoch)
+		// fmt.Printf("Loading epoch %d\n", local.Epoch)
 		count, n = util.ParseUint32(data, n)
 		actions := make([][]byte, count)
-		//fmt.Printf("Loading %v actions %v\n", count, n)
+		// fmt.Printf("Loading %v actions %v\n", count, n)
 		for i := 0; i < int(count); i++ {
 			actions[i], n = util.ParseLargeByteArray(data, n)
 			ok := validator.Validate(actions[i][1:])
