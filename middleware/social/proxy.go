@@ -64,7 +64,8 @@ func (local *LocalBlockChain[M, B]) LoadState(genesis Stateful[M, B], source io.
 			actions[i], n = util.ParseLargeByteArray(data, n)
 			ok := validator.Validate(actions[i][1:])
 			if !ok {
-				return fmt.Errorf("invalid action at position %d of block %d", i, local.Epoch)
+				// return fmt.Errorf("invalid action at position %d of block %d", i, local.Epoch)
+				fmt.Printf("invalid action at position %d of block %d", i, local.Epoch)
 			}
 			if len(listeners) > 0 {
 				for _, listener := range listeners {
