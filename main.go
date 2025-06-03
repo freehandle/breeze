@@ -1,25 +1,15 @@
 package main
 
 import (
-	"context"
 	"fmt"
-	"log"
-	"sync"
 	"time"
 
-	"github.com/freehandle/breeze/consensus/bft"
 	"github.com/freehandle/breeze/consensus/chain"
-	"github.com/freehandle/breeze/consensus/messages"
-	"github.com/freehandle/breeze/consensus/permission"
-	"github.com/freehandle/breeze/consensus/relay"
-	"github.com/freehandle/breeze/consensus/swell"
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/protocol/actions"
-	"github.com/freehandle/breeze/socket"
-	"github.com/freehandle/breeze/util"
 )
 
-var pkHex = "f622f274b13993e3f1824a30ef0f7e57f0c35a4fbdc38e54e37916ef06a64a797eb7aa3582b216bba42d45e91e0a560508478f5b55228439b42733945fd5c2f5"
+/*var pkHex = "f622f274b13993e3f1824a30ef0f7e57f0c35a4fbdc38e54e37916ef06a64a797eb7aa3582b216bba42d45e91e0a560508478f5b55228439b42733945fd5c2f5"
 
 func TestSwell() {
 	socket.TCPNetworkTest.AddNode("mainserver", 1, 100*time.Millisecond, 1e9)
@@ -359,22 +349,103 @@ func TestBFT() {
 	}
 	wg.Wait()
 }
+
+
+
 func main() {
-	TestSwell()
-	/*bytes, _ := hex.DecodeString(pkHex)
-	var pk crypto.PrivateKey
-	copy(pk[:], bytes)
-	tokenBytes, _ := hex.DecodeString(pkHex[64:])
-	var token crypto.Token
-	copy(token[:], tokenBytes)
-	if !pk.PublicKey().Equal(token) {
-		log.Fatalf("invalid credentials")
+
+	start := time.Now()
+	pks := make([]crypto.PrivateKey, 10000)
+	for i := 0; i < len(pks); i++ {
+		_, pks[i] = crypto.RandomAsymetricKey()
 	}
-	config.Credentials = pk
-	err := <-poa.Genesis(config)
+
+	teste := make([]actions.Transfer, 10000)
+	for i := 0; i < len(teste); i++ {
+		teste[i] = actions.Transfer{
+			From: pks[i%len(pks)].PublicKey(),
+			To: []crypto.TokenValue{
+				{Token: pks[(i+1)%len(pks)].PublicKey(), Value: 1000},
+			},
+			Reason: "teste",
+			Fee:    1,
+		}
+		teste[i].Sign(pks[i%len(pks)])
+	}
+	fmt.Println("Time taken to create transfers:", time.Since(start))
+
+	wallet := state.NewGenesisStateWithToken(pks[0].PublicKey(), "")
+
+	testChain := chain.BlockchainFromGenesisState(wallet, crypto.HashToken(pks[0].PublicKey()), time.Second, 900)
+
+}
+*/
+
+//TestSwell()
+/*bytes, _ := hex.DecodeString(pkHex)
+var pk crypto.PrivateKey
+copy(pk[:], bytes)
+tokenBytes, _ := hex.DecodeString(pkHex[64:])
+var token crypto.Token
+copy(token[:], tokenBytes)
+if !pk.PublicKey().Equal(token) {
+	log.Fatalf("invalid credentials")
+}
+config.Credentials = pk
+err := <-poa.Genesis(config)
+if err != nil {
+	fmt.Println(err)
+} else {
+	fmt.Println("done")
+}*/
+
+var textao string = `
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+`
+
+func main() {
+	fmt.Println("tamanho do texto:", len(textao))
+	start := time.Now()
+	pks := make([]crypto.PrivateKey, 5000)
+	for i := 0; i < len(pks); i++ {
+		_, pks[i] = crypto.RandomAsymetricKey()
+	}
+
+	teste := make([][]byte, 5000)
+	for i := 0; i < len(teste); i++ {
+		transf := actions.Transfer{
+			From: pks[0].PublicKey(),
+			To: []crypto.TokenValue{
+				{Token: pks[(i+1)%len(pks)].PublicKey(), Value: 1000},
+			},
+			Reason: textao,
+			Fee:    1,
+		}
+		transf.Sign(pks[0])
+		teste[i] = transf.Serialize()
+	}
+	fmt.Println("Time taken to create transfers:", time.Since(start))
+
+	testChain := chain.BlockchainFromGenesisState(pks[0], "",
+		crypto.HashToken(pks[0].PublicKey()), time.Second, 900,
+	)
+
+	block, err := testChain.BlockBuilder(1)
 	if err != nil {
-		fmt.Println(err)
-	} else {
-		fmt.Println("done")
-	}*/
+		fmt.Println("Error creating block builder:", err)
+		return
+	}
+	start = time.Now()
+	for _, t := range teste {
+		if !block.Validate(t) {
+			fmt.Println("Invalid transfer in block")
+			return
+		}
+	}
+	sealed := block.Seal(pks[0])
+	bytes := sealed.Serialize()
+	fmt.Println("Time taken to create block:", time.Since(start))
+	fmt.Println("Block size:", len(bytes))
 }
