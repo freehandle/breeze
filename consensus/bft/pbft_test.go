@@ -80,7 +80,7 @@ func TestPooling(t *testing.T) {
 	for n := 0; n < 12; n++ {
 		go func(n int, credentials crypto.PrivateKey) {
 			p := PoolingCommittee{
-				Epoch:   0,
+				Height:  0,
 				Members: members,
 				Order:   order,
 				Gossip:  &TestGossipConnection{network: network, token: credentials.PublicKey()},

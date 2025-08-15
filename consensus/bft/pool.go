@@ -38,7 +38,7 @@ type PoolingMembers struct {
 }
 
 type PoolingCommittee struct {
-	Epoch   uint64
+	Height  uint64
 	Members map[crypto.Token]PoolingMembers
 	Gossip  GossipNetwork
 	Order   []crypto.Token
@@ -70,8 +70,8 @@ type Pooling struct {
 	shutdown       chan struct{}
 }
 
-func (p *Pooling) Epoch() uint64 {
-	return p.committee.Epoch
+func (p *Pooling) Height() uint64 {
+	return p.committee.Height
 }
 
 func (p *Pooling) isLeader(token crypto.Token, round byte) bool {
@@ -90,7 +90,7 @@ func (p *Pooling) getRound(r byte) *Ballot {
 
 func (p *Pooling) SealBlock(hash crypto.Hash, token crypto.Token) {
 	if !p.committee.Order[0].Equal(token) {
-		slog.Info("Swell: SealBlock from a non-leader", "token", token, "epoch", p.committee.Epoch, "round", p.round)
+		slog.Info("Swell: SealBlock from a non-leader", "token", token, "epoch", p.committee.Height, "round", p.round)
 		return
 	}
 	p.blockSeal = hash
@@ -158,7 +158,7 @@ func (p *Pooling) Check() {
 
 	// terminate with 2F+1 commit to value
 	if hash, ok := round.Finalized(); ok {
-		done := NewDone(p.committee.Epoch, p.credentials)
+		done := NewDone(p.committee.Height, p.credentials)
 		p.Broadcast(done.Serialize())
 		p.Finalize <- &ConsensusCommit{Value: hash, Rounds: p.rounds, Duplicates: p.duplicates}
 		p.shutdown <- struct{}{}
@@ -278,7 +278,7 @@ func (p *Pooling) has(hash crypto.Hash) bool {
 func (p *Pooling) CastVote(hash crypto.Hash, has bool) {
 	token := p.credentials.PublicKey()
 	vote := &RoundVote{
-		Epoch:   p.committee.Epoch,
+		Epoch:   p.committee.Height,
 		Round:   p.round,
 		Token:   token,
 		Value:   hash,
@@ -296,7 +296,7 @@ func (p *Pooling) CastVote(hash crypto.Hash, has bool) {
 func (p *Pooling) PendVote(hash crypto.Hash) {
 	token := p.credentials.PublicKey()
 	vote := &RoundVote{
-		Epoch:  p.committee.Epoch,
+		Epoch:  p.committee.Height,
 		Round:  p.round,
 		Token:  token,
 		Value:  hash,
@@ -309,7 +309,7 @@ func (p *Pooling) PendVote(hash crypto.Hash) {
 func (p *Pooling) CastBlankVote() {
 	token := p.credentials.PublicKey()
 	vote := &RoundVote{
-		Epoch:  p.committee.Epoch,
+		Epoch:  p.committee.Height,
 		Round:  p.round,
 		Blank:  true,
 		Token:  token,
@@ -326,7 +326,7 @@ func (p *Pooling) CastBlankVote() {
 func (p *Pooling) CastCommit(hash crypto.Hash) {
 	token := p.credentials.PublicKey()
 	commit := &RoundCommit{
-		Epoch:  p.committee.Epoch,
+		Epoch:  p.committee.Height,
 		Round:  p.round,
 		Token:  token,
 		Value:  hash,
@@ -343,7 +343,7 @@ func (p *Pooling) CastCommit(hash crypto.Hash) {
 func (p *Pooling) CastBlankCommit() {
 	token := p.credentials.PublicKey()
 	commit := &RoundCommit{
-		Epoch:  p.committee.Epoch,
+		Epoch:  p.committee.Height,
 		Round:  p.round,
 		Blank:  true,
 		Token:  token,
@@ -360,7 +360,7 @@ func (p *Pooling) CastBlankCommit() {
 func (p *Pooling) CastPropose() {
 	token := p.credentials.PublicKey()
 	propose := &RoundPropose{
-		Epoch: p.committee.Epoch,
+		Epoch: p.committee.Height,
 		Round: p.round,
 		Token: token,
 	}

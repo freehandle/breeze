@@ -278,7 +278,7 @@ func (w *Window) RunEpoch(epoch uint64) {
 	leaderCount := int(epoch-w.Start) % len(w.Committee.order)
 	leaderToken := w.Committee.order[leaderCount]
 	poolingCommittee := &bft.PoolingCommittee{
-		Epoch:   epoch,
+		Height:  epoch,
 		Members: make(map[crypto.Token]bft.PoolingMembers),
 		Order:   make([]crypto.Token, 0),
 	}
@@ -405,9 +405,9 @@ func (w *Window) BuildBlock(epoch uint64, pool *bft.Pooling) bool {
 // block with the consensus hash it tries to get that block from other nodes
 // of the gossip network.
 func (w *Window) ListenToBlock(leader *socket.BufferedMultiChannel, others []*socket.BufferedMultiChannel, pool *bft.Pooling) bool {
-	defer leader.Release(pool.Epoch())
+	defer leader.Release(pool.Height())
 	var sealed *chain.SealedBlock
-	epoch := pool.Epoch()
+	epoch := pool.Height()
 	go func() {
 		var block *chain.BlockBuilder
 		for {
@@ -480,7 +480,7 @@ func (w *Window) ListenToBlock(leader *socket.BufferedMultiChannel, others []*so
 				}
 			}
 		}
-		sealed = <-RetrieveBlock(pool.Epoch(), consensus.Value, order)
+		sealed = <-RetrieveBlock(pool.Height(), consensus.Value, order)
 	}
 	if sealed == nil {
 		slog.Warn("Breeze: ListentToBlock could not retrieve sealed block compatible consensus")
