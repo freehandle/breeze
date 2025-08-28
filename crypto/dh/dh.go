@@ -30,7 +30,7 @@ package dh
 // the SHA256 hash on the agreed key is used as a key for an AES 256 Cipher.
 
 import (
-	"math/rand"
+	"crypto/rand"
 
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/crypto/dh/curve25519"
