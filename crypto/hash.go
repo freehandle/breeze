@@ -12,28 +12,28 @@ func (h Hash) String() string {
 	return EncodeHash(h)
 }
 
-var hashLength = base64.StdEncoding.EncodedLen(Size)
+var hashLength = base64.URLEncoding.EncodedLen(Size)
 
 func (h Hash) MarshalText() (text []byte, err error) {
 	text = make([]byte, hashLength)
-	base64.StdEncoding.Encode(text, h[:])
+	base64.URLEncoding.Encode(text, h[:])
 	return
 }
 
 func DecodeHash(text string) Hash {
 	var hash Hash
-	base64.StdEncoding.Decode(hash[:], []byte(text))
+	base64.URLEncoding.Decode(hash[:], []byte(text))
 	return hash
 }
 
 func EncodeHash(h Hash) string {
 	text := make([]byte, hashLength)
-	base64.StdEncoding.Encode(text, h[:])
+	base64.URLEncoding.Encode(text, h[:])
 	return string(text)
 }
 
 func (h Hash) UnmarshalText(text []byte) error {
-	_, err := base64.StdEncoding.Decode(h[:], text)
+	_, err := base64.URLEncoding.Decode(h[:], text)
 	return err
 }
 
