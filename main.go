@@ -7,6 +7,7 @@ import (
 	"github.com/freehandle/breeze/consensus/chain"
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/protocol/actions"
+	"github.com/freehandle/brisa/util"
 )
 
 /*var pkHex = "f622f274b13993e3f1824a30ef0f7e57f0c35a4fbdc38e54e37916ef06a64a797eb7aa3582b216bba42d45e91e0a560508478f5b55228439b42733945fd5c2f5"
@@ -406,6 +407,18 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor i
 `
 
 func main() {
+	if len(textao) == 0 {
+		return
+	}
+	db, err := util.OpenMultiFileStore("testdata", "blocos_teste")
+	if err != nil {
+		fmt.Println("Error opening database:", err)
+		return
+	}
+	defer db.Close()
+}
+
+func main2() {
 	fmt.Println("tamanho do texto:", len(textao))
 	start := time.Now()
 	pks := make([]crypto.PrivateKey, 5000)
