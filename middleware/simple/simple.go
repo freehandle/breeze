@@ -51,7 +51,7 @@ func Gateway(ctx context.Context, port int, token crypto.Token, credentials cryp
 	return receiver, nil
 }
 
-func (sc *SimpleChain[M, B]) Start(ctx context.Context, credentials crypto.PrivateKey) chan error {
+func (sc *SimpleChain[M, B]) Start(ctx context.Context, credentials crypto.PrivateKey, logger func([]byte) string) chan error {
 	ticker := time.NewTicker(sc.Interval)
 	finalize := make(chan error, 2)
 	gateway, err := net.Listen("tcp", fmt.Sprintf(":%d", sc.GatewayPort))
@@ -111,6 +111,9 @@ func (sc *SimpleChain[M, B]) Start(ctx context.Context, credentials crypto.Priva
 			case data := <-receiver:
 				if len(data) == 0 || !sc.State.Validator().Validate(data) {
 					continue
+				}
+				if logger != nil {
+					fmt.Println(logger(data))
 				}
 				actions = append(actions, data)
 			case <-ctxCancel.Done():
