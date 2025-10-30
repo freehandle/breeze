@@ -25,10 +25,12 @@ func (s *SimpleBlockWriter) WriteBlock(block *SimpleBlock) error {
 
 func OpenSimpleBlockWriter(path, name string, maxSize int64, output chan *SimpleBlock) (*SimpleBlockWriter, error) {
 	chunkData := make(chan []byte, 1)
+	fmt.Println("Opening simple block writer")
 	writer, err := solo.NewWriter(path, name, maxSize, chunkSize, chunkData)
 	if err != nil {
 		return nil, err
 	}
+	fmt.Println("Opening chunk reader")
 	reader := NewChunkBlockReader()
 	for {
 		chunk, ok := <-chunkData
@@ -43,9 +45,32 @@ func OpenSimpleBlockWriter(path, name string, maxSize int64, output chan *Simple
 	if reader.bufferEpoch != 0 || len(reader.buffer) != 0 {
 		return nil, fmt.Errorf("incomplete block data remaining in buffer")
 	}
+	close(output)
 	return &SimpleBlockWriter{
 		writer: writer,
 	}, nil
+}
+
+func DissociateActions(ctx context.Context, block chan *SimpleBlock) chan []byte {
+	actionChan := make(chan []byte, 1)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				close(actionChan)
+				return
+			case b, ok := <-block:
+				if !ok {
+					close(actionChan)
+					return
+				}
+				for _, action := range b.Actions {
+					actionChan <- action
+				}
+			}
+		}
+	}()
+	return actionChan
 }
 
 func NewBlockReader(ctx context.Context, path, name string, interval time.Duration) chan *SimpleBlock {

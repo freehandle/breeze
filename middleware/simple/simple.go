@@ -27,6 +27,30 @@ type SimpleChain[M social.Merger[M], B social.Blocker[M]] struct {
 	Keep        int
 }
 
+func Gateway(ctx context.Context, port int, token crypto.Token, credentials crypto.PrivateKey) (chan []byte, error) {
+	gateway, err := socket.Dial("localhost", fmt.Sprintf(":%d", port), credentials, token)
+	if err != nil {
+		return nil, err
+	}
+	receiver := make(chan []byte, 1)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				gateway.Shutdown()
+				return
+			case data := <-receiver:
+				err := gateway.Send(data)
+				if err != nil {
+					gateway.Shutdown()
+					return
+				}
+			}
+		}
+	}()
+	return receiver, nil
+}
+
 func (sc *SimpleChain[M, B]) Start(ctx context.Context, credentials crypto.PrivateKey) chan error {
 	ticker := time.NewTicker(sc.Interval)
 	finalize := make(chan error, 2)
