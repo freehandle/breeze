@@ -41,6 +41,11 @@ type Reader struct {
 // If files already exist, it starts by reading them and sending content to the output channel.
 // After reading existing files, it switches to write mode.
 func NewWriter(path, filename string, maxFileLength int64, chunkSize int, outputChan chan []byte) (*Writer, error) {
+	defer func() {
+		if outputChan != nil {
+			close(outputChan)
+		}
+	}()
 	w := &Writer{
 		path:          path,
 		filename:      filename,
@@ -52,29 +57,31 @@ func NewWriter(path, filename string, maxFileLength int64, chunkSize int, output
 	if err != nil {
 		return nil, err
 	}
-
+	done := make(chan error, 1)
 	// If there are existing files, read them first
 	if len(existingFiles) > 0 && outputChan != nil {
 		go func() {
-			defer close(outputChan)
 			for _, file := range existingFiles {
 				if err := readFileInChunks(file, chunkSize, outputChan); err != nil {
+					done <- err
 					return
 				}
 			}
+			done <- nil
 		}()
-
-		// Start with the next index after existing files
-		w.currentIndex = len(existingFiles)
-	} else if outputChan != nil {
-		close(outputChan)
+		// Start with the next index at the last existing file
+		w.currentIndex = len(existingFiles) - 1
+	} else {
+		done <- nil
 	}
-
+	err = <-done
+	if err != nil {
+		return nil, err
+	}
 	// Open the current file for writing
 	if err := w.openNextFile(); err != nil {
 		return nil, err
 	}
-
 	return w, nil
 }
 
@@ -118,27 +125,28 @@ func (w *Writer) Close() error {
 	return nil
 }
 
-// openNextFile opens the next file in the sequence.
-func (w *Writer) openNextFile() error {
-	filename := fmt.Sprintf("%s_%d", w.filename, w.currentIndex)
-	fullPath := filepath.Join(w.path, filename)
-
+func (w *Writer) openFileAppendMode(filename string) error {
 	// Check if file exists to get current size
-	info, err := os.Stat(fullPath)
+	info, err := os.Stat(filename)
 	if err == nil {
 		w.currentSize = info.Size()
 	} else {
 		w.currentSize = 0
 	}
-
 	// Open file in append mode
-	file, err := os.OpenFile(fullPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return err
 	}
-
 	w.currentFile = file
 	return nil
+}
+
+// openNextFile opens the next file in the sequence.
+func (w *Writer) openNextFile() error {
+	filename := fmt.Sprintf("%s_%d", w.filename, w.currentIndex)
+	fullPath := filepath.Join(w.path, filename)
+	return w.openFileAppendMode(fullPath)
 }
 
 // NewReader creates a new sequential file reader.
@@ -310,7 +318,6 @@ func findSequenceFiles(path, filename string) ([]string, error) {
 	for i, fi := range fileIndices {
 		result[i] = fi.path
 	}
-
 	return result, nil
 }
 

@@ -107,6 +107,7 @@ func (sc *SimpleChain[M, B]) Start(ctx context.Context, credentials crypto.Priva
 				} else {
 					sc.Recent = append(sc.Recent, actions)
 					sc.Epoch += 1
+					actions = actions[:0]
 				}
 			case data := <-receiver:
 				if len(data) == 0 || !sc.State.Validator().Validate(data) {

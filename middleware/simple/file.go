@@ -37,15 +37,17 @@ func OpenSimpleBlockWriter(path, name string, maxSize int64, output chan *Simple
 		if !ok {
 			break
 		}
+		fmt.Println("Incorporating chunk of size", len(chunk))
 		blocks := reader.incorporate(chunk)
 		for _, block := range blocks {
+			fmt.Println("Outputting block with epoch", block.Epoch, "and", len(block.Actions), "actions")
 			output <- block
 		}
 	}
+	close(output)
 	if reader.bufferEpoch != 0 || len(reader.buffer) != 0 {
 		return nil, fmt.Errorf("incomplete block data remaining in buffer")
 	}
-	close(output)
 	return &SimpleBlockWriter{
 		writer: writer,
 	}, nil
@@ -157,6 +159,7 @@ func (s *BlockChunkReader) incorporate(chunk []byte) []*SimpleBlock {
 				// reset buffer state
 				s.bufferEpoch = 0
 				s.bufferActions = nil
+				continue
 			}
 		}
 		// try to read actions
@@ -164,12 +167,14 @@ func (s *BlockChunkReader) incorporate(chunk []byte) []*SimpleBlock {
 			return blocks
 		}
 		length := int(s.buffer[0]) | int(s.buffer[1])<<8
+		fmt.Println("Next action length:", length)
 		if len(s.buffer) < 2+length {
 			return blocks
 		}
 		s.bufferActions = append(s.bufferActions, s.buffer[2:2+length])
 		s.buffer = s.buffer[2+length:]
 		if len(s.bufferActions) == s.bufferActionCount {
+			fmt.Println("Finalizing block with epoch", s.bufferEpoch, "and", s.bufferActionCount, "actions")
 			block := &SimpleBlock{
 				Epoch:   s.bufferEpoch,
 				Actions: s.bufferActions,
@@ -177,7 +182,9 @@ func (s *BlockChunkReader) incorporate(chunk []byte) []*SimpleBlock {
 			blocks = append(blocks, block)
 			// reset buffer state
 			s.bufferEpoch = 0
+			s.bufferActionCount = 0
 			s.bufferActions = nil
 		}
+		fmt.Println("buuugfer", len(s.buffer))
 	}
 }
