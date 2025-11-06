@@ -199,6 +199,14 @@ func TokenFromString(s string) Token {
 	return token
 }
 
+func PrivateKeyFromString(s string) PrivateKey {
+	var pk PrivateKey
+	if bytes, err := hex.DecodeString(s); err == nil {
+		copy(pk[:], bytes)
+	}
+	return pk
+}
+
 func (t Token) Larger(another Token) bool {
 	for n := 0; n < TokenSize; n++ {
 		if t[n] > another[n] {

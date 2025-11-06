@@ -40,7 +40,7 @@ func OpenSimpleBlockWriter(path, name string, maxSize int64, output chan *Simple
 		fmt.Println("Incorporating chunk of size", len(chunk))
 		blocks := reader.incorporate(chunk)
 		for _, block := range blocks {
-			fmt.Println("Outputting block with epoch", block.Epoch, "and", len(block.Actions), "actions")
+			//fmt.Println("Outputting block with epoch", block.Epoch, "and", len(block.Actions), "actions")
 			output <- block
 		}
 	}
@@ -66,8 +66,14 @@ func DissociateActions(ctx context.Context, block chan *SimpleBlock) chan []byte
 					close(actionChan)
 					return
 				}
+				// first send the epoch signal
+				blockEpochSignal := []byte{0}
+				util.PutUint64(b.Epoch, &blockEpochSignal)
+				actionChan <- blockEpochSignal
+				fmt.Println("Block epoch:", b.Epoch, "with", len(b.Actions), "actions")
+				// then send all actions
 				for _, action := range b.Actions {
-					actionChan <- action
+					actionChan <- append([]byte{1}, action...)
 				}
 			}
 		}

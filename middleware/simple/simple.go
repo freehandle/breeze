@@ -106,11 +106,14 @@ func (sc *SimpleChain[M, B]) Start(ctx context.Context, credentials crypto.Priva
 					cancel()
 				} else {
 					sc.Recent = append(sc.Recent, actions)
-					sc.Epoch += 1
 					actions = actions[:0]
 				}
+				validator = sc.State.Validator()
 			case data := <-receiver:
-				if len(data) == 0 || !sc.State.Validator().Validate(data) {
+				fmt.Println("Received data of length:", len(data))
+				if len(data) == 0 || !validator.Validate(data) {
+					fmt.Println("Não validou ou dado vazio")
+					fmt.Println(logger(data))
 					continue
 				}
 				if logger != nil {
