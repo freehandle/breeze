@@ -70,7 +70,7 @@ func DissociateActions(ctx context.Context, block chan *SimpleBlock) chan []byte
 				blockEpochSignal := []byte{0}
 				util.PutUint64(b.Epoch, &blockEpochSignal)
 				actionChan <- blockEpochSignal
-				fmt.Println("Block epoch:", b.Epoch, "with", len(b.Actions), "actions")
+				//fmt.Println("Block epoch:", b.Epoch, "with", len(b.Actions), "actions")
 				// then send all actions
 				for _, action := range b.Actions {
 					actionChan <- append([]byte{1}, action...)

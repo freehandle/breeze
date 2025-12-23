@@ -10,6 +10,7 @@ import (
 	"github.com/freehandle/breeze/crypto"
 	"github.com/freehandle/breeze/middleware/social"
 	"github.com/freehandle/breeze/socket"
+	"github.com/freehandle/breeze/util"
 )
 
 type SimpleBlock struct {
@@ -25,6 +26,52 @@ type SimpleChain[M social.Merger[M], B social.Blocker[M]] struct {
 	Epoch       uint64
 	Recent      [][][]byte
 	Keep        int
+}
+
+type Validated struct {
+	Data  []byte
+	Valid bool
+}
+
+func (s *SimpleChain[M, B]) RunDirect(ctx context.Context, source chan []byte) chan Validated {
+	forward := make(chan Validated, 1)
+	go func() {
+		defer close(forward)
+		validator := s.State.Validator()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case data, ok := <-source:
+				if !ok {
+					return
+				}
+				if len(data) == 0 {
+					continue
+				}
+				if data[0] == 0 && len(data) == 9 { // epoch update
+					epoch, _ := util.ParseUint64(data[1:], 1)
+					if epoch == s.Epoch+1 {
+						s.Epoch = epoch
+						mutacoes := validator.Mutations()
+						s.State.Incorporate(mutacoes)
+						validator = s.State.Validator()
+					} else {
+						return
+					}
+				} else if data[0] == 1 { // action
+					action := data[1:]
+					if validator.Validate(action) {
+						forward <- Validated{Data: action, Valid: true}
+					} else {
+						forward <- Validated{Data: action, Valid: false}
+					}
+				}
+				// else ignore
+			}
+		}
+	}()
+	return forward
 }
 
 func Gateway(ctx context.Context, port int, token crypto.Token, credentials crypto.PrivateKey) (chan []byte, error) {
