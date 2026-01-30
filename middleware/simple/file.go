@@ -26,25 +26,28 @@ func (s *SimpleBlockWriter) WriteBlock(block *SimpleBlock) error {
 func OpenSimpleBlockWriter(path, name string, maxSize int64, output chan *SimpleBlock) (*SimpleBlockWriter, error) {
 	chunkData := make(chan []byte, 1)
 	fmt.Println("Opening simple block writer")
+	// fmt.Println("Opening chunk reader")
+	reader := NewChunkBlockReader()
+	go func() {
+		for {
+			chunk, ok := <-chunkData
+			if !ok {
+				break
+			}
+			blocks := reader.incorporate(chunk)
+			for _, block := range blocks {
+				//fmt.Println("Outputting block with epoch", block.Epoch, "and", len(block.Actions), "actions")
+				output <- block
+			}
+		}
+		// close(output)
+	}()
+
 	writer, err := solo.NewWriter(path, name, maxSize, chunkSize, chunkData)
 	if err != nil {
+		fmt.Println("erro no open simple block do file")
 		return nil, err
 	}
-	fmt.Println("Opening chunk reader")
-	reader := NewChunkBlockReader()
-	for {
-		chunk, ok := <-chunkData
-		if !ok {
-			break
-		}
-		fmt.Println("Incorporating chunk of size", len(chunk))
-		blocks := reader.incorporate(chunk)
-		for _, block := range blocks {
-			//fmt.Println("Outputting block with epoch", block.Epoch, "and", len(block.Actions), "actions")
-			output <- block
-		}
-	}
-	close(output)
 	if reader.bufferEpoch != 0 || len(reader.buffer) != 0 {
 		return nil, fmt.Errorf("incomplete block data remaining in buffer")
 	}

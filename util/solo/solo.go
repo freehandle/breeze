@@ -332,6 +332,7 @@ func readFileInChunks(filePath string, chunkSize int, outputChan chan []byte) er
 	buffer := make([]byte, chunkSize)
 	for {
 		n, err := file.Read(buffer)
+		fmt.Println("aqui read file chunk")
 		if n > 0 {
 			chunk := make([]byte, n)
 			copy(chunk, buffer[:n])
