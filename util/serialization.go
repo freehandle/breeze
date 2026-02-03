@@ -39,6 +39,17 @@ func PutActionsArray(b [][]byte, data *[]byte) {
 	}
 }
 
+func PutLongActionsArray(b [][]byte, data *[]byte) {
+	count := uint32(len(b))
+	PutUint32(count, data)
+	if count == 0 {
+		return
+	}
+	for _, bytes := range b {
+		PutLongByteArray(bytes, data)
+	}
+}
+
 func PutHashArray(b []crypto.Hash, data *[]byte) {
 	count := uint32(len(b))
 	PutUint32(count, data)

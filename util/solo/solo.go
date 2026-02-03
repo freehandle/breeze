@@ -57,26 +57,15 @@ func NewWriter(path, filename string, maxFileLength int64, chunkSize int, output
 	if err != nil {
 		return nil, err
 	}
-	done := make(chan error, 1)
 	// If there are existing files, read them first
 	if len(existingFiles) > 0 && outputChan != nil {
-		go func() {
-			for _, file := range existingFiles {
-				if err := readFileInChunks(file, chunkSize, outputChan); err != nil {
-					done <- err
-					return
-				}
+		for _, file := range existingFiles {
+			if err := readFileInChunks(file, chunkSize, outputChan); err != nil {
+				return nil, err
 			}
-			done <- nil
-		}()
+		}
 		// Start with the next index at the last existing file
 		w.currentIndex = len(existingFiles) - 1
-	} else {
-		done <- nil
-	}
-	err = <-done
-	if err != nil {
-		return nil, err
 	}
 	// Open the current file for writing
 	if err := w.openNextFile(); err != nil {
@@ -332,17 +321,16 @@ func readFileInChunks(filePath string, chunkSize int, outputChan chan []byte) er
 	buffer := make([]byte, chunkSize)
 	for {
 		n, err := file.Read(buffer)
-		fmt.Println("aqui read file chunk")
-		if n > 0 {
-			chunk := make([]byte, n)
-			copy(chunk, buffer[:n])
-			outputChan <- chunk
-		}
 		if err != nil {
 			if err == io.EOF {
 				return nil
 			}
 			return err
+		}
+		if n > 0 {
+			chunk := make([]byte, n)
+			copy(chunk, buffer[:n])
+			outputChan <- chunk
 		}
 	}
 }
