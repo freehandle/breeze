@@ -49,7 +49,7 @@ func TestWriter_FileRotation(t *testing.T) {
 
 	// Write data that will exceed maxFileLength
 	data1 := []byte("12345678901234567890") // 20 bytes
-	data2 := []byte("ABCDEFGHIJ")          // 10 bytes
+	data2 := []byte("ABCDEFGHIJ")           // 10 bytes
 
 	_, err = w.Write(data1)
 	if err != nil {

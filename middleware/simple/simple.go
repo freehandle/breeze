@@ -20,6 +20,7 @@ type SimpleBlock struct {
 
 type SimpleChain[M social.Merger[M], B social.Blocker[M]] struct {
 	Interval    time.Duration
+	GenesisTime time.Time
 	GatewayPort int
 	Writer      *SimpleBlockWriter
 	State       social.Stateful[M, B]
@@ -138,9 +139,19 @@ func (sc *SimpleChain[M, B]) Start(ctx context.Context, credentials crypto.Priva
 		validator := sc.State.Validator()
 		actions := make([][]byte, 0)
 		var err error
+		clockSync := false
 		for {
 			select {
 			case <-ticker.C:
+				if !clockSync {
+					clockSync = true
+					if !sc.GenesisTime.IsZero() {
+						epoch := uint64(time.Since(sc.GenesisTime) / sc.Interval)
+						if sc.Epoch < epoch {
+							sc.Epoch = epoch - 1
+						}
+					}
+				}
 				sc.Epoch += 1
 				mutations := validator.Mutations()
 				sc.State.Incorporate(mutations)
